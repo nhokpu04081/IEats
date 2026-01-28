@@ -35,15 +35,7 @@ app.get("/", (req, res) => {
 });
 
 // ---------- DB Pool (Railway MySQL ENV) ----------
-const pool = mysql.createPool({
-  host: process.env.MYSQLHOST,
-  user: process.env.MYSQLUSER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
-  port: Number(process.env.MYSQLPORT || 3306),
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+const pool = mysql.createPool(process.env.MYSQL_URL);
 
 // ---------- Helpers ----------
 function requireAuth(req, res, next) {
