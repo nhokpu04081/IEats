@@ -1,0 +1,139 @@
+/* === FORM OVERLAY STYLES === */
+.form-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+.form-overlay.active {
+    display: flex;
+}
+
+.form-container {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.form-tabs {
+    display: flex;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.form-tab {
+    padding: 0.8rem 1.5rem;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+
+.form-tab.active {
+    border-bottom-color: #667eea;
+    color: #667eea;
+    font-weight: bold;
+}
+
+.form-tab-content {
+    display: none;
+}
+
+.form-tab-content.active {
+    display: block;
+}
+
+.file-input {
+    padding: 0.5rem !important;
+}
+
+/* === STAR RATING STYLES === */
+.rating-section {
+    text-align: center;
+    border-top: 2px solid #f8f9fa;
+    padding-top: 1.5rem;
+    margin-top: 1rem;
+}
+
+.star-rating {
+    margin-bottom: 1rem;
+}
+
+.stars {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    justify-content: center;
+}
+
+.star {
+    font-size: 2.5rem;
+    cursor: pointer;
+    color: #ddd;
+    transition: color 0.2s ease;
+    user-select: none;
+}
+
+.star:hover,
+.star.active {
+    color: #ffc107;
+    transform: scale(1.1);
+}
+
+.rating-text {
+    color: #666;
+    font-size: 1rem;
+    text-align: center;
+    font-weight: bold;
+}
+
+/* === IMAGE PREVIEW STYLES === */
+.image-preview {
+    margin-top: 1rem;
+    text-align: center;
+}
+
+#previewImage {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+}
+
+/* === DISH INPUT STYLES === */
+.dish-input {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.dish-input .dish-name {
+    flex: 1;
+}
+
+.remove-dish-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    width: 25px;
+    height: 25px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+

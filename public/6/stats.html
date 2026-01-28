@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IEats - 統計</title>
+    <link rel="stylesheet" href="css/shared.css" />
+    <link rel="stylesheet" href="css/stats.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-content">
+        <div class="logo">I<span>Eats</span></div>
+        <div class="user-section">
+          <span id="userGreeting">グルメ日記</span>
+          <button class="login-btn" id="loginBtn">ログイン</button>
+          <button class="logout-btn" id="logoutBtn" style="display: none">
+            ログアウト
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- LOGIN -->
+    <div id="loginModal" class="login-modal">
+      <div class="login-container">
+        <h2>ログイン</h2>
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="username">ユーザー名</label>
+            <input type="text" id="username" required />
+          </div>
+
+          <div class="form-group">
+            <label for="password">パスワード</label>
+            <input type="password" id="password" required />
+          </div>
+
+          <div class="form-actions">
+            <button
+              type="button"
+              id="cancelLoginButton"
+              class="btn btn-secondary"
+            >
+              キャンセル
+            </button>
+            <button type="submit" class="btn btn-primary">ログイン</button>
+          </div>
+        </form>
+
+        <div style="text-align: center; margin-top: 1rem">
+          <button
+            type="button"
+            id="showRegisterButton"
+            class="btn btn-secondary"
+            style="width: 100%"
+          >
+            アカウント登録
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="registerModal" class="login-modal">
+      <div class="login-container">
+        <h2>アカウント登録</h2>
+        <form id="registerForm">
+          <div class="form-group">
+            <label for="regUsername">ユーザー名</label>
+            <input type="text" id="regUsername" required />
+          </div>
+
+          <div class="form-group">
+            <label for="regEmail">メールアドレス</label>
+            <input type="email" id="regEmail" required />
+          </div>
+
+          <div class="form-group">
+            <label for="regPassword">パスワード</label>
+            <input type="password" id="regPassword" required />
+          </div>
+
+          <div class="form-group">
+            <label for="regConfirmPassword">パスワード確認</label>
+            <input type="password" id="regConfirmPassword" required />
+          </div>
+
+          <div class="form-actions">
+            <button
+              type="button"
+              id="cancelRegisterButton"
+              class="btn btn-secondary"
+            >
+              キャンセル
+            </button>
+            <button type="submit" class="btn btn-primary">登録</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <nav>
+      <div class="nav-container">
+        <a href="index.html" class="nav-item">🏠 ホーム</a>
+        <a href="calendar.html" class="nav-item">📅 カレンダー</a>
+        <a href="stats.html" class="nav-item active">📊 統計</a>
+        <a href="restaurants.html" class="nav-item">🏪 行った店</a>
+        <a href="wishlist.html" class="nav-item">🍽️ 食べたいリスト</a>
+        <a href="categories.html" class="nav-item">🔖 カテゴリー</a>
+      </div>
+    </nav>
+
+    <div class="container">
+      <h2>マイ統計</h2>
+
+      <div class="form-group" style="max-width: 250px; margin-bottom: 1.5rem">
+        <label for="statsMonth">📅 月を選択:</label>
+        <select id="statsMonth"></select>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="totalEntries">0</div>
+          <div class="stat-label">総日記数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="monthlyEntries">0</div>
+          <div class="stat-label">今月の食事回数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalRestaurants">0</div>
+          <div class="stat-label">行った店舗数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="avgRating">0</div>
+          <div class="stat-label">平均評価</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/shared.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/add-forms.js"></script>
+    <script src="js/stats.js"></script>
+  </body>
+</html>

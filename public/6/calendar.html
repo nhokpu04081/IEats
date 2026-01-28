@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEats - カレンダー</title>
+    <link rel="stylesheet" href="css/shared.css">
+    <link rel="stylesheet" href="css/calendar.css">
+</head>
+<body>
+    <header>
+      <div class="header-content">
+        <div class="logo">I<span>Eats</span></div>
+        <div class="user-section">
+          <span id="userGreeting">グルメ日記</span>
+          <button class="login-btn" id="loginBtn">ログイン</button>
+          <button class="logout-btn" id="logoutBtn" style="display: none">
+            ログアウト
+          </button>
+        </div>
+      </div>
+    </header>
+    <nav>
+      <div class="nav-container">
+        <a href="index.html" class="nav-item">🏠 ホーム</a>
+        <a href="calendar.html" class="nav-item active">📅 カレンダー</a>
+        <a href="stats.html" class="nav-item">📊 統計</a>
+        <a href="restaurants.html" class="nav-item">🏪 行った店</a>
+        <a href="wishlist.html" class="nav-item">🍽️ 食べたいリスト</a>
+        <a href="categories.html" class="nav-item">🔖 カテゴリー</a>
+      </div>
+    </nav>
+    
+    <div class="container">
+        <div class="calendar-header">
+            <button id="prevMonth">◀</button>
+            <h2 id="currentMonth">2024年3月</h2>
+            <button id="nextMonth">▶</button>
+        </div>
+        
+        <div class="calendar-grid" id="calendar">
+            <!-- Calendar will be loaded by calendar.js -->
+        </div>
+        
+        <div class="selected-day-entries" id="dayEntries">
+        </div>
+    </div>
+
+    <script src="js/shared.js"></script>
+    <script src="js/calendar.js"></script>
+    <script src="js/auth.js"></script>
+
+</body>
+</html

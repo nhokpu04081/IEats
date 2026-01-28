@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IEats - ホーム</title>
+    <link rel="stylesheet" href="css/shared.css" />
+    <link rel="stylesheet" href="css/home.css" />
+    <link rel="stylesheet" href="css/add-forms.css" />
+  </head>
+
+  <body>
+    <!-- HEADER -->
+    <header>
+      <div class="header-content">
+        <div class="logo">I<span>Eats</span></div>
+        <div class="user-section">
+          <span id="userGreeting">グルメ日記</span>
+          <button class="login-btn" id="loginBtn">ログイン</button>
+          <button class="logout-btn" id="logoutBtn" style="display: none">
+            ログアウト
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- LOGIN -->
+    <div id="loginModal" class="login-modal">
+      <div class="login-container">
+        <h2>ログイン</h2>
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="username">ユーザー名</label>
+            <input type="text" id="username" required />
+          </div>
+
+          <div class="form-group">
+            <label for="password">パスワード</label>
+            <input type="password" id="password" required />
+          </div>
+
+          <div class="form-actions">
+            <button
+              type="button"
+              id="cancelLoginButton"
+              class="btn btn-secondary"
+            >
+              キャンセル
+            </button>
+            <button type="submit" class="btn btn-primary">ログイン</button>
+          </div>
+        </form>
+
+        <div style="text-align: center; margin-top: 1rem">
+          <button
+            type="button"
+            id="showRegisterButton"
+            class="btn btn-secondary"
+            style="width: 100%"
+          >
+            アカウント登録
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="registerModal" class="login-modal">
+      <div class="login-container">
+        <h2>アカウント登録</h2>
+        <form id="registerForm">
+          <div class="form-group">
+            <label for="regUsername">ユーザー名</label>
+            <input type="text" id="regUsername" required />
+          </div>
+
+          <div class="form-group">
+            <label for="regEmail">メールアドレス</label>
+            <input type="email" id="regEmail" required />
+          </div>
+
+          <div class="form-group">
+            <label for="regPassword">パスワード</label>
+            <input type="password" id="regPassword" required />
+          </div>
+
+          <div class="form-group">
+            <label for="regConfirmPassword">パスワード確認</label>
+            <input type="password" id="regConfirmPassword" required />
+          </div>
+
+          <div class="form-actions">
+            <button
+              type="button"
+              id="cancelRegisterButton"
+              class="btn btn-secondary"
+            >
+              キャンセル
+            </button>
+            <button type="submit" class="btn btn-primary">登録</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- NAVIGATION -->
+    <nav>
+      <div class="nav-container">
+        <a href="index.html" class="nav-item active">🏠 ホーム</a>
+        <a href="calendar.html" class="nav-item">📅 カレンダー</a>
+        <a href="stats.html" class="nav-item">📊 統計</a>
+        <a href="restaurants.html" class="nav-item">🏪 行った店</a>
+        <a href="wishlist.html" class="nav-item">🍽️ 食べたいリスト</a>
+        <a href="categories.html" class="nav-item">🔖 カテゴリー</a>
+      </div>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <div class="container">
+      <div class="timeline" id="timeline">
+        <!-- Timeline entries will be loaded by home.js -->
+      </div>
+    </div>
+
+    <!-- ADD BUTTON -->
+    <button class="add-btn" id="addButton">+</button>
+
+    <!-- ADD ENTRY FORM -->
+    <div id="addFormOverlay" class="form-overlay">
+      <div class="form-container">
+        <div class="form-tabs">
+          <button type="button" class="form-tab active" data-tab="journal">
+            📝 食事日記
+          </button>
+          <button type="button" class="form-tab" data-tab="wishlist">
+            🍽️ 食べたい料理
+          </button>
+        </div>
+
+        <!-- JOURNAL TAB -->
+        <div id="journalTab" class="form-tab-content active">
+          <h2>新しい日記を追加</h2>
+          <form id="entryForm">
+            <div class="form-group">
+              <label for="mapsLink"
+                >Google Mapsのリンクを貼り付け（任意）</label
+              >
+              <input
+                type="text"
+                id="mapsLink"
+                placeholder="https://maps.app.goo.gl/..."
+              />
+              <button
+                type="button"
+                id="parseMapButton"
+                class="btn btn-secondary"
+                style="margin-top: 0.5rem; width: auto"
+              >
+                情報を取得
+              </button>
+            </div>
+
+            <div class="form-group">
+              <label for="restaurantName">店舗名 *</label>
+              <input type="text" id="restaurantName" required />
+            </div>
+
+            <div class="form-group">
+              <label for="restaurantAddress">住所 *</label>
+              <input type="text" id="restaurantAddress" required />
+              <small style="color: #666; font-size: 0.8rem"
+                >リンクから取得できない場合は手動で入力してください</small
+              >
+            </div>
+
+            <div class="form-group">
+              <label for="entryDate">食事した日付</label>
+              <input type="date" id="entryDate" />
+            </div>
+
+            <div class="form-group">
+              <label>注文した料理</label>
+              <div id="dishesContainer">
+                <div class="dish-input">
+                  <input type="text" placeholder="料理名" class="dish-name" />
+                  <button type="button" class="remove-dish-btn">×</button>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="addDishButton"
+                class="btn btn-secondary"
+                style="margin-top: 0.5rem; width: auto"
+              >
+                + 料理を追加
+              </button>
+            </div>
+
+            <div class="form-group">
+              <label for="restaurantImage">店舗の写真（任意）</label>
+              <input
+                type="file"
+                id="restaurantImage"
+                accept="image/*"
+                class="file-input"
+                multiple
+              />
+              <div
+                class="image-preview"
+                id="imagePreview"
+                style="display: none"
+              >
+                <img id="previewImage" src="" alt="画像プレビュー" />
+                <button
+                  type="button"
+                  id="removeImageButton"
+                  class="btn btn-secondary"
+                >
+                  写真を削除
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="entryContent">感想・メモ</label>
+              <textarea
+                id="entryContent"
+                rows="3"
+                placeholder="あなたの体験を描写してください..."
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="entryTags">タグ（カンマ区切り）</label>
+              <input
+                type="text"
+                id="entryTags"
+                placeholder="デート、一人、友達"
+              />
+            </div>
+
+            <div class="form-group rating-section">
+              <label>総合評価 *</label>
+              <div class="star-rating">
+                <div class="stars">
+                  <span class="star" data-rating="1">☆</span>
+                  <span class="star" data-rating="2">☆</span>
+                  <span class="star" data-rating="3">☆</span>
+                  <span class="star" data-rating="4">☆</span>
+                  <span class="star" data-rating="5">☆</span>
+                </div>
+                <div class="rating-text" id="ratingText">
+                  評価を選択してください
+                </div>
+              </div>
+              <input type="hidden" id="overallRating" required />
+            </div>
+
+            <div class="form-actions">
+              <button
+                type="button"
+                id="cancelEntryButton"
+                class="btn btn-secondary"
+              >
+                キャンセル
+              </button>
+              <button type="submit" class="btn btn-primary">日記を保存</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- WISHLIST TAB -->
+        <div id="wishlistTab" class="form-tab-content">
+          <h2>食べたい料理を追加</h2>
+          <form id="wishlistForm">
+            <div class="form-group">
+              <label for="wishlistDish">料理名 *</label>
+              <input
+                type="text"
+                id="wishlistDish"
+                placeholder="例：ラーメン、バインミー、ピザ..."
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="wishlistRestaurant">店舗（任意）</label>
+              <input
+                type="text"
+                id="wishlistRestaurant"
+                placeholder="この料理を食べたい店舗名"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="wishlistNotes">メモ</label>
+              <textarea
+                id="wishlistNotes"
+                rows="2"
+                placeholder="食べたい理由、特徴など..."
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="wishlistPriority">優先度</label>
+              <select id="wishlistPriority">
+                <option value="high">🔴 とても食べたい</option>
+                <option value="medium">🟡 食べたい</option>
+                <option value="low">🟢 機会があれば</option>
+              </select>
+            </div>
+
+            <div class="form-actions">
+              <button
+                type="button"
+                id="cancelWishlistButton"
+                class="btn btn-secondary"
+              >
+                キャンセル
+              </button>
+              <button type="submit" class="btn btn-primary">
+                リストに追加
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/shared.js"></script>
+    <script src="js/add-forms.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/home.js"></script>
+  </body>
+</html>
