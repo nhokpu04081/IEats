@@ -34,17 +34,19 @@ function displayWishlist() {
       const p = item.priority || "medium";
       const pLabel =
         p === "high"
-          ? "🔴 とても食べたい"
+          ? "🔥 今すぐ"
           : p === "low"
-            ? "🟢 機会があれば"
-            : "🟡 食べたい";
+            ? "💤 そのうち"
+            : "👍 近いうち";
+      const pClass =
+        p === "high" ? "prio-high" : p === "low" ? "prio-low" : "prio-mid";
 
       return `
   <div class="wishlist-item">
     <div>
       <div class="wishlist-top-row">
         <strong class="wishlist-dish">${escapeHtml(item.dish)}</strong>
-        <span class="wishlist-priority">${pLabel}</span>
+        <span class="wishlist-priority ${pClass}">${pLabel}</span>
       </div>
 
       ${
