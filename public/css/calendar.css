@@ -65,3 +65,28 @@
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
+
+/* === Calendar entry thumbnail === */
+.calendar-entry-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  margin-top: 10px;
+  background: #fff;
+}
+
+.entry-thumbnail {
+  width: 90px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex: 0 0 auto;
+  display: block;
+}
+
+.calendar-entry-item img {
+  max-width: 100%;
+}
