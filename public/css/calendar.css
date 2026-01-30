@@ -69,7 +69,8 @@
 /* === Calendar entry thumbnail === */
 .calendar-entry-item {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
   padding: 12px;
   border: 1px solid #e9ecef;
@@ -79,8 +80,8 @@
 }
 
 .entry-thumbnail {
-  width: 90px;
-  height: 90px;
+  width: 120px;
+  height: 120px;
   object-fit: cover;
   border-radius: 10px;
   flex: 0 0 auto;
