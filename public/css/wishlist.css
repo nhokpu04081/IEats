@@ -26,3 +26,32 @@
 .delete-wishlist-btn:hover {
   opacity: 1;
 }
+
+.wishlist-top-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wishlist-dish {
+  flex: 0 1 auto;
+}
+
+.wishlist-priority {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  color: #444;
+  white-space: nowrap;
+}
+
+.wishlist-restaurant {
+  color: #666;
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.wishlist-notes {
+  color: #666;
+  font-size: 0.85rem;
+  margin-top: 6px;
+}

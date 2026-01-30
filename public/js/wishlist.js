@@ -30,35 +30,44 @@ function displayWishlist() {
   }
 
   container.innerHTML = appData.wishlist
-    .map(
-      (item) => `
-    <div class="wishlist-item">
-      <div>
-        <strong>${escapeHtml(item.dish)}</strong>
-        ${
-          item.restaurant
-            ? `<div style="color:#666;font-size:0.9rem;">🏪 ${escapeHtml(
-                item.restaurant
-              )}</div>`
-            : ""
-        }
-        ${
-          item.notes
-            ? `<div style="color:#666;font-size:0.85rem;margin-top:0.3rem;">${escapeHtml(
-                item.notes
-              )}</div>`
-            : ""
-        }
+    .map((item) => {
+      const p = item.priority || "medium";
+      const pLabel =
+        p === "high"
+          ? "🔴 とても食べたい"
+          : p === "low"
+            ? "🟢 機会があれば"
+            : "🟡 食べたい";
+
+      return `
+  <div class="wishlist-item">
+    <div>
+      <div class="wishlist-top-row">
+        <strong class="wishlist-dish">${escapeHtml(item.dish)}</strong>
+        <span class="wishlist-priority">${pLabel}</span>
       </div>
 
-      <button
-        class="delete-wishlist-btn"
-        title="削除"
-        onclick="deleteWishlistItem(${item.id})"
-      >✖</button>
+      ${
+        item.restaurant
+          ? `<div class="wishlist-restaurant">🏪 ${escapeHtml(item.restaurant)}</div>`
+          : ""
+      }
+
+      ${
+        item.notes
+          ? `<div class="wishlist-notes">${escapeHtml(item.notes)}</div>`
+          : ""
+      }
     </div>
-  `
-    )
+
+    <button
+      class="delete-wishlist-btn"
+      title="削除"
+      onclick="deleteWishlistItem(${item.id})"
+    >✖</button>
+  </div>
+`;
+    })
     .join("");
 }
 
