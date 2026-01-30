@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", async function () {
   await ensureDataLoaded();
   displayRestaurants();
+  focusRestaurantFromUrl();
 });
 
 // Lấy danh sách tag theo từng restaurantName từ entries
@@ -63,7 +64,7 @@ function displayRestaurants() {
 
   // filter
   let list = [...appData.restaurants].sort(
-    (a, b) => b.averageRating - a.averageRating
+    (a, b) => b.averageRating - a.averageRating,
   );
   if (appData.currentTagFilter) {
     list = list.filter((r) => {
@@ -91,7 +92,7 @@ function displayRestaurants() {
               style="border:1px solid #ddd; background:#fff; padding:6px 10px; border-radius:999px; cursor:pointer;"
               onclick="filterRestaurantsByTag('${tag.replace(/'/g, "\\'")}')"
             >#${escapeHtml(tag)}</button>
-          `
+          `,
             )
             .join("")}
           ${
@@ -116,7 +117,7 @@ function displayRestaurants() {
       const tags = tagSet ? Array.from(tagSet) : [];
 
       return `
-      <div class="restaurant-item">
+      <div class="restaurant-item" data-restaurant-name="${escapeHtml(restaurant.name)}">
         <div style="display: flex; align-items: flex-start; gap: 1rem;">
           ${
             restaurant.image
@@ -128,12 +129,12 @@ function displayRestaurants() {
           <div>
             <strong>${escapeHtml(restaurant.name)}</strong>
             <div style="color: #666; font-size: 0.9rem;">${escapeHtml(
-              restaurant.address || ""
+              restaurant.address || "",
             )}</div>
             <div style="color: #ffc107; font-weight: bold; margin-top: 0.3rem;">
               ${"★".repeat(Math.round(restaurant.averageRating))}${"☆".repeat(
-        5 - Math.round(restaurant.averageRating)
-      )} 
+                5 - Math.round(restaurant.averageRating),
+              )} 
               <span style="color: #666; font-size: 0.8rem;">(${
                 restaurant.averageRating
               })</span>
@@ -151,11 +152,11 @@ function displayRestaurants() {
                     style="cursor:pointer;"
                     onclick="filterRestaurantsByTag('${t.replace(
                       /'/g,
-                      "\\'"
+                      "\\'",
                     )}')"
                     title="このタグで絞り込み"
                   >#${escapeHtml(t)}</span>
-                `
+                `,
                   )
                   .join("")}
               </div>
@@ -193,6 +194,29 @@ function filterRestaurantsByTag(tag) {
 function clearRestaurantTagFilter() {
   appData.currentTagFilter = null;
   displayRestaurants();
+}
+
+function focusRestaurantFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const target = params.get("restaurant");
+  if (!target) return;
+
+  // đảm bảo không bị filter tag che mất
+  if (appData.currentTagFilter) {
+    appData.currentTagFilter = null;
+    displayRestaurants();
+  }
+
+  const cards = document.querySelectorAll(".restaurant-item");
+  const card = Array.from(cards).find(
+    (el) => el.dataset.restaurantName === target,
+  );
+
+  if (!card) return;
+
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  card.classList.add("highlight");
+  setTimeout(() => card.classList.remove("highlight"), 1500);
 }
 
 window.displayRestaurants = displayRestaurants;

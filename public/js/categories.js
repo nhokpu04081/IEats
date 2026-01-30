@@ -30,23 +30,23 @@ function displayCategories() {
                 ([rating, restaurants]) => `
                 <div class="rating-item">
                     <h4>${"★".repeat(parseInt(rating))}${"☆".repeat(
-                  5 - parseInt(rating)
-                )} 星評価 (${restaurants.length}店舗)</h4>
+                      5 - parseInt(rating),
+                    )} 星評価 (${restaurants.length}店舗)</h4>
                     <div class="restaurant-list">
                         ${restaurants
                           .map(
                             (restaurant) => `
-                            <div class="restaurant-item-small">
-                                <strong>${escapeHtml(restaurant.name)}</strong>
+                            <div class="restaurant-item-small" onclick="goToRestaurant('${restaurant.name.replace(/'/g, "\\'")}')">
+                              <strong>${escapeHtml(restaurant.name)}</strong>
                                 <div style="font-size: 0.8rem; color: #666; margin-top: 0.2rem;">
                                     訪問: ${restaurant.visitCount}回 • 評価: ${
-                              restaurant.averageRating
-                            }
+                                      restaurant.averageRating
+                                    }
                                     ${
                                       getRestaurantTags(restaurant.name)
                                         .length > 0
                                         ? `• タグ: ${getRestaurantTags(
-                                            restaurant.name
+                                            restaurant.name,
                                           )
                                             .map((tag) => `#${escapeHtml(tag)}`)
                                             .join(", ")}`
@@ -54,12 +54,12 @@ function displayCategories() {
                                     }
                                 </div>
                             </div>
-                        `
+                        `,
                           )
                           .join("")}
                     </div>
                 </div>
-            `
+            `,
               )
               .join("")}
         </div>
@@ -78,11 +78,11 @@ function displayCategories() {
                         }" 
                                 onclick="filterByTag('${tag.replace(
                                   /'/g,
-                                  "\\'"
+                                  "\\'",
                                 )}')">
                             #${escapeHtml(tag)}
                         </button>
-                    `
+                    `,
                       )
                       .join("")}
                 </div>
@@ -93,25 +93,25 @@ function displayCategories() {
       if (filteredRestaurants.length > 0) {
         html += `
                     <h4>タグ "#${escapeHtml(
-                      appData.currentTagFilter
+                      appData.currentTagFilter,
                     )}" の飲食店 (${filteredRestaurants.length}店舗)</h4>
                     <div class="restaurant-list">
                         ${filteredRestaurants
                           .map(
                             (restaurant) => `
-                            <div class="restaurant-item-small">
-                                <strong>${escapeHtml(restaurant.name)}</strong>
+                            <div class="restaurant-item-small" onclick="goToRestaurant('${restaurant.name.replace(/'/g, "\\'")}')">
+                            <strong>${escapeHtml(restaurant.name)}</strong>
                                 <div style="font-size: 0.8rem; color: #666; margin-top: 0.2rem;">
                                     評価: ${"★".repeat(
-                                      Math.round(restaurant.averageRating)
+                                      Math.round(restaurant.averageRating),
                                     )}${"☆".repeat(
-                              5 - Math.round(restaurant.averageRating)
-                            )} (${restaurant.averageRating}) • 訪問: ${
-                              restaurant.visitCount
-                            }回
+                                      5 - Math.round(restaurant.averageRating),
+                                    )} (${restaurant.averageRating}) • 訪問: ${
+                                      restaurant.visitCount
+                                    }回
                                 </div>
                             </div>
-                        `
+                        `,
                           )
                           .join("")}
                     </div>
@@ -121,7 +121,7 @@ function displayCategories() {
                     <div class="category-empty">
                         <div>🔍</div>
                         <p>タグ "#${escapeHtml(
-                          appData.currentTagFilter
+                          appData.currentTagFilter,
                         )}" に該当する飲食店はありません</p>
                     </div>
                 `;
@@ -155,7 +155,7 @@ function groupRestaurantsByRating() {
   [5, 4, 3, 2, 1].forEach((rating) => {
     if (ratingGroups[rating]) {
       sortedGroups[rating] = ratingGroups[rating].sort(
-        (a, b) => b.averageRating - a.averageRating
+        (a, b) => b.averageRating - a.averageRating,
       );
     }
   });
@@ -187,3 +187,7 @@ function filterByTag(tag) {
   appData.currentTagFilter = appData.currentTagFilter === tag ? null : tag;
   displayCategories();
 }
+function goToRestaurant(name) {
+  window.location.href = `restaurants.html?restaurant=${encodeURIComponent(name)}`;
+}
+window.goToRestaurant = goToRestaurant;
