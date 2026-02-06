@@ -307,7 +307,80 @@ function removeDishField(button) {
 }
 
 // === MAP LINK PARSING ===
-extractLatLngFromGoogleMapsUrl;
+function parseMapLink() {
+  const linkEl = document.getElementById("mapsLink");
+  const link = (linkEl?.value || "").trim();
+
+  if (!link) return;
+
+  // Cảnh báo nếu là short link
+  if (link.includes("goo.gl") || link.includes("maps.app.goo.gl")) {
+    alert(
+      "⚠️ このアプリはショートリンクには対応していません\n長いGoogle Mapsリンクを使用するか、手動で店舗名と住所を入力してください",
+    );
+    linkEl.value = "";
+    linkEl.focus();
+    return;
+  }
+
+  try {
+    const url = new URL(link);
+
+    // 1) Lấy tên quán từ phần /place/
+    let placeName = "";
+    const pathParts = url.pathname.split("/");
+    for (let i = 0; i < pathParts.length; i++) {
+      if (pathParts[i] === "place" && i + 1 < pathParts.length) {
+        const nextPart = pathParts[i + 1];
+        const atIndex = nextPart.indexOf("@");
+        placeName = decodeURIComponent(
+          (atIndex > 0 ? nextPart.substring(0, atIndex) : nextPart).replace(
+            /\+/g,
+            " ",
+          ),
+        );
+        break;
+      }
+    }
+
+    if (placeName) {
+      const nameEl = document.getElementById("restaurantName");
+      if (nameEl) nameEl.value = placeName.trim();
+    }
+
+    // 2) Ưu tiên lấy tọa độ "place" từ !3dLAT!4dLNG (có thể có nhiều cặp -> lấy cặp cuối)
+    let lat = "";
+    let lng = "";
+
+    const allPairs = [
+      ...link.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g),
+    ];
+    if (allPairs.length) {
+      const m = allPairs[allPairs.length - 1];
+      lat = m[1];
+      lng = m[2];
+    } else {
+      // 3) Fallback: tọa độ trung tâm map @LAT,LNG
+      const centerMatch = link.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+      if (centerMatch) {
+        lat = centerMatch[1];
+        lng = centerMatch[2];
+      }
+    }
+
+    // 4) Nếu có tọa độ thì reverse geocode lấy địa chỉ
+    if (lat && lng) {
+      getAddressFromOpenStreetMap(lat, lng);
+    } else {
+      alert(
+        "⚠️ このリンクから座標を取得できません\n手動で店舗名と住所を入力してください",
+      );
+    }
+  } catch (error) {
+    console.error("Link parse error:", error);
+    alert("リンクの解析に失敗しました。手動で入力してください");
+  }
+}
 
 // === FORM SUBMISSION HANDLERS (ONLY THIS PART CHANGED TO MYSQL/API) ===
 async function handleEntrySubmit(e) {
