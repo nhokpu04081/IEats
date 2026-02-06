@@ -78,6 +78,8 @@ async function deleteWishlistItem(id) {
 
   try {
     await apiDelete(`/wishlist/${id}`);
+    alert("削除しました！");
+
     await refreshData();
     displayWishlist();
   } catch (e) {

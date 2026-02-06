@@ -61,11 +61,11 @@ function displayTimeline() {
                 <div class="restaurant-name">
                     ${escapeHtml(entry.restaurantName)}
                     <span class="restaurant-rating">${"★".repeat(
-                      entry.overallRating
+                      entry.overallRating,
                     )}${"☆".repeat(5 - entry.overallRating)}</span>
                 </div>
                 <div class="restaurant-address">📍 ${escapeHtml(
-                  entry.restaurantAddress
+                  entry.restaurantAddress,
                 )}</div>
                 ${
                   entry.images && entry.images.length
@@ -75,25 +75,25 @@ function displayTimeline() {
       .map(
         (src) => `
       <img src="${src}" class="entry-image" style="width:120px;height:120px;object-fit:cover;border-radius:12px;">
-    `
+    `,
       )
       .join("")}
   </div>
 `
                     : entry.image
-                    ? `
+                      ? `
   <img src="${entry.image}" class="entry-image" alt="${escapeHtml(
-                        entry.restaurantName
-                      )}">
+    entry.restaurantName,
+  )}">
 `
-                    : ""
+                      : ""
                 }
 
 
                 ${
                   entry.content
                     ? `<div class="entry-content">${escapeHtml(
-                        entry.content
+                        entry.content,
                       )}</div>`
                     : ""
                 }
@@ -108,7 +108,7 @@ function displayTimeline() {
                             <div class="dish-item">
                                 <span>• ${escapeHtml(dish)}</span>
                             </div>
-                        `
+                        `,
                           )
                           .join("")}
                     </div>
@@ -122,7 +122,7 @@ function displayTimeline() {
                         ${entry.tags
                           .map(
                             (tag) =>
-                              `<span class="tag">#${escapeHtml(tag)}</span>`
+                              `<span class="tag">#${escapeHtml(tag)}</span>`,
                           )
                           .join("")}
                     </div>
@@ -130,7 +130,7 @@ function displayTimeline() {
                     : ""
                 }
             </div>
-        `
+        `,
     )
     .join("");
 }
@@ -140,6 +140,8 @@ async function deleteEntry(entryId) {
 
   try {
     await apiDelete(`/entries/${entryId}`);
+    alert("削除しました！");
+
     await refreshData();
     displayTimeline();
   } catch (e) {
@@ -179,7 +181,7 @@ function fillEditFormData(entry) {
       dishDiv.className = "dish-input";
       dishDiv.innerHTML = `
                 <input type="text" placeholder="料理名" class="dish-name" value="${escapeHtml(
-                  dish
+                  dish,
                 )}">
                 <button type="button" class="remove-dish-btn">✖</button>
             `;
@@ -199,14 +201,14 @@ function fillEditFormData(entry) {
     selectedImages = Array.isArray(entry.images)
       ? entry.images.slice()
       : entry.image
-      ? [entry.image]
-      : [];
+        ? [entry.image]
+        : [];
     document.getElementById("imagePreview").style.display = "block";
     renderImagesPreview();
   }
 
   const submitButton = document.querySelector(
-    '#entryForm button[type="submit"]'
+    '#entryForm button[type="submit"]',
   );
   if (submitButton) submitButton.textContent = "変更を保存";
 }
