@@ -230,6 +230,44 @@ async function fetchGoogleNearbyPlaces({ lat, lng, radius, limit }) {
   return r.json();
 }
 
+// Uses Places API (New): Text Search (New) - POST /v1/places:searchText
+// Useful when you already know a place name and want the most accurate match.
+async function fetchGoogleTextSearch({ textQuery, lat, lng, radius = 800, limit = 10 }) {
+  const url = "https://places.googleapis.com/v1/places:searchText";
+
+  const body = {
+    textQuery: (textQuery || "").toString(),
+    pageSize: Math.min(Math.max(Number(limit) || 10, 1), 20),
+    languageCode: "ja",
+    regionCode: "JP",
+    locationBias: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: Math.min(Math.max(Number(radius) || 800, 50), 50000),
+      },
+    },
+  };
+
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+      // FieldMask is REQUIRED for Text Search (New)
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Google Text Search failed: ${r.status} ${t}`);
+  }
+
+  return r.json();
+}
+
 // Places API (New): Place Details (New) - GET /v1/places/{placeId}
 async function fetchGooglePlaceDetails(placeId) {
   const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(
@@ -373,18 +411,20 @@ app.post("/api/auth/logout", (req, res) => {
 // Returns simple POI list (name + address + lat/lng + distance).
 // Priority: Google Places (if GOOGLE_PLACES_API_KEY is set). Fallback: Overpass (free).
 app.get("/api/nearby", requireAuth, async (req, res) => {
-  try {
-    const lat = Number(req.query.lat);
-    const lng = Number(req.query.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.status(400).json({ error: "invalid_coords" });
-    }
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "invalid_coords" });
+  }
 
-    const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 1000);
-    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
+  const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 1000);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
 
-    // ---- 1) Google Places (recommended / most accurate) ----
-    if (GOOGLE_PLACES_API_KEY) {
+  let googleError = null;
+
+  // ---- 1) Google Places (recommended / most accurate) ----
+  if (GOOGLE_PLACES_API_KEY) {
+    try {
       const json = await fetchGoogleNearbyPlaces({ lat, lng, radius, limit });
       const arr = Array.isArray(json?.places) ? json.places : [];
 
@@ -420,9 +460,16 @@ app.get("/api/nearby", requireAuth, async (req, res) => {
         .slice(0, limit);
 
       return res.json({ ok: true, provider: "google", places });
+    } catch (e) {
+      // Important: do NOT fail the whole feature just because Google errors.
+      // Fallback to Overpass (free) so the demo still works.
+      googleError = e;
+      console.error("NEARBY GOOGLE ERROR:", e);
     }
+  }
 
-    // ---- 2) Overpass fallback (FREE) ----
+  // ---- 2) Overpass fallback (FREE) ----
+  try {
     const q = `
 [out:json][timeout:10];
 (
@@ -477,10 +524,18 @@ out center tags;
       .sort((a, b) => a.distanceMeters - b.distanceMeters)
       .slice(0, limit);
 
-    res.json({ ok: true, provider: "overpass", places });
+    return res.json({
+      ok: true,
+      provider: "overpass",
+      googleError: googleError ? String(googleError.message || googleError) : null,
+      places,
+    });
   } catch (e) {
-    console.error("NEARBY ERROR:", e);
-    res.status(500).json({ error: "server_error" });
+    console.error("NEARBY OVERPASS ERROR:", e);
+    return res.status(500).json({
+      error: "server_error",
+      googleError: googleError ? String(googleError.message || googleError) : null,
+    });
   }
 });
 
@@ -488,70 +543,125 @@ out center tags;
 // POST /api/maps/resolve { name?, lat, lng }
 // Returns: { ok, provider, place: { placeId, name, address, lat, lng, googleMapsUri } }
 app.post("/api/maps/resolve", requireAuth, async (req, res) => {
-  try {
-    const targetName = normalizeString(req.body?.name);
-    const lat = Number(req.body?.lat);
-    const lng = Number(req.body?.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.status(400).json({ error: "invalid_coords" });
-    }
-
-    const radius = Math.min(Math.max(Number(req.body?.radius) || 120, 20), 500);
-    const limit = Math.min(Math.max(Number(req.body?.limit) || 10, 1), 20);
-
-    // ---- 1) Google Places (best accuracy) ----
-    if (GOOGLE_PLACES_API_KEY) {
-      const json = await fetchGoogleNearbyPlaces({ lat, lng, radius, limit });
-      const arr = Array.isArray(json?.places) ? json.places : [];
-
-      // pick best by name similarity + distance
-      const best = pickBestPlaceByNameAndDistance({
-        targetName,
-        centerLat: lat,
-        centerLng: lng,
-        places: arr,
-      });
-
-      if (!best) {
-        return res.status(404).json({ error: "not_found" });
-      }
-
-      // ensure address exists (some places may not include it)
-      let address = (best?.formattedAddress || "").toString().trim();
-      let googleMapsUri = (best?.googleMapsUri || "").toString().trim();
-
-      if (!address || !googleMapsUri) {
-        const details = await fetchGooglePlaceDetails(best.id);
-        address = (details?.formattedAddress || address).toString().trim();
-        googleMapsUri = (details?.googleMapsUri || googleMapsUri)
-          .toString()
-          .trim();
-      }
-
-      return res.json({
-        ok: true,
-        provider: "google",
-        place: {
-          placeId: best.id,
-          name: (best?.displayName?.text || "").toString().trim(),
-          address,
-          lat: best?.location?.latitude ?? null,
-          lng: best?.location?.longitude ?? null,
-          googleMapsUri,
-        },
-      });
-    }
-
-    // ---- 2) Fallback: return coords only (client can use OSM reverse) ----
-    res.json({
-      ok: true,
-      provider: "coords_only",
-      place: { placeId: null, name: targetName, address: "", lat, lng },
-    });
-  } catch (e) {
-    console.error("MAPS RESOLVE ERROR:", e);
-    res.status(500).json({ error: "server_error" });
+  const targetName = normalizeString(req.body?.name);
+  const lat = Number(req.body?.lat);
+  const lng = Number(req.body?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "invalid_coords" });
   }
+
+  const radius = Math.min(Math.max(Number(req.body?.radius) || 120, 20), 500);
+  const limit = Math.min(Math.max(Number(req.body?.limit) || 10, 1), 20);
+
+  if (!GOOGLE_PLACES_API_KEY) {
+    // Client will fallback to OSM reverse geocode.
+    return res.json({ ok: true, provider: "coords_only", place: null });
+  }
+
+  let googleError = null;
+  let provider = null;
+  let places = [];
+
+  // ---- 1) If we have a name, try Text Search (more accurate for resolving Google Maps links) ----
+  if (targetName) {
+    try {
+      const json = await fetchGoogleTextSearch({
+        textQuery: targetName,
+        lat,
+        lng,
+        // use a bit wider bias for name-based search
+        radius: Math.max(radius * 6, 500),
+        limit,
+      });
+      places = Array.isArray(json?.places) ? json.places : [];
+      provider = "google_textsearch";
+    } catch (e) {
+      googleError = e;
+      console.error("MAP RESOLVE TEXTSEARCH ERROR:", e);
+    }
+  }
+
+  // ---- 2) Fallback: Nearby Search around the extracted coords ----
+  if (!places.length) {
+    try {
+      const json = await fetchGoogleNearbyPlaces({ lat, lng, radius, limit });
+      places = Array.isArray(json?.places) ? json.places : [];
+      provider = "google_nearby";
+    } catch (e) {
+      googleError = googleError || e;
+      console.error("MAP RESOLVE NEARBY ERROR:", e);
+    }
+  }
+
+  if (!places.length) {
+    // Don't return 500 so the frontend can smoothly fallback to OSM.
+    return res.json({
+      ok: true,
+      provider: "google_failed",
+      googleError: googleError ? String(googleError.message || googleError) : null,
+      place: null,
+    });
+  }
+
+  // pick best by name similarity + distance (if targetName is empty, it becomes "nearest")
+  const best =
+    pickBestPlaceByNameAndDistance({
+      targetName,
+      centerLat: lat,
+      centerLng: lng,
+      places,
+    }) || places[0];
+
+  let placeId = (best?.id || "").toString().trim() || null;
+  let name =
+    (best?.displayName?.text || "").toString().trim() || targetName || "";
+  let address = (best?.formattedAddress || "").toString().trim();
+  let plat =
+    typeof best?.location?.latitude === "number" ? best.location.latitude : null;
+  let plng =
+    typeof best?.location?.longitude === "number"
+      ? best.location.longitude
+      : null;
+
+  let googleMapsUri = (best?.googleMapsUri || "").toString().trim() || null;
+
+  // ensure address/uri are present via Place Details (New) when needed
+  if (placeId && (!address || !googleMapsUri || plat === null || plng === null)) {
+    try {
+      const details = await fetchGooglePlaceDetails(placeId);
+      address =
+        address ||
+        (details?.formattedAddress || "").toString().trim() ||
+        (details?.shortFormattedAddress || "").toString().trim();
+      googleMapsUri =
+        googleMapsUri || (details?.googleMapsUri || "").toString().trim() || null;
+      if (plat === null && typeof details?.location?.latitude === "number")
+        plat = details.location.latitude;
+      if (plng === null && typeof details?.location?.longitude === "number")
+        plng = details.location.longitude;
+      name =
+        name ||
+        (details?.displayName?.text || "").toString().trim() ||
+        targetName ||
+        "";
+    } catch (e) {
+      console.error("MAP RESOLVE DETAILS ERROR:", e);
+    }
+  }
+
+  return res.json({
+    ok: true,
+    provider,
+    googleError: googleError ? String(googleError.message || googleError) : null,
+    place: {
+      placeId,
+      name,
+      address,
+      lat: plat ?? lat,
+      lng: plng ?? lng,
+      googleMapsUri,
+    },
+  });
 });
 
 // ---------- Entries ----------
