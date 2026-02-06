@@ -61,11 +61,11 @@ function displayTimeline() {
                 <div class="restaurant-name">
                     ${escapeHtml(entry.restaurantName)}
                     <span class="restaurant-rating">${"★".repeat(
-                      entry.overallRating
+                      entry.overallRating,
                     )}${"☆".repeat(5 - entry.overallRating)}</span>
                 </div>
                 <div class="restaurant-address">📍 ${escapeHtml(
-                  entry.restaurantAddress
+                  entry.restaurantAddress,
                 )}</div>
                 ${
                   entry.images && entry.images.length
@@ -75,25 +75,25 @@ function displayTimeline() {
       .map(
         (src) => `
       <img src="${src}" class="entry-image" style="width:120px;height:120px;object-fit:cover;border-radius:12px;">
-    `
+    `,
       )
       .join("")}
   </div>
 `
                     : entry.image
-                    ? `
+                      ? `
   <img src="${entry.image}" class="entry-image" alt="${escapeHtml(
-                        entry.restaurantName
-                      )}">
+    entry.restaurantName,
+  )}">
 `
-                    : ""
+                      : ""
                 }
 
 
                 ${
                   entry.content
                     ? `<div class="entry-content">${escapeHtml(
-                        entry.content
+                        entry.content,
                       )}</div>`
                     : ""
                 }
@@ -108,7 +108,7 @@ function displayTimeline() {
                             <div class="dish-item">
                                 <span>• ${escapeHtml(dish)}</span>
                             </div>
-                        `
+                        `,
                           )
                           .join("")}
                     </div>
@@ -122,7 +122,7 @@ function displayTimeline() {
                         ${entry.tags
                           .map(
                             (tag) =>
-                              `<span class="tag">#${escapeHtml(tag)}</span>`
+                              `<span class="tag">#${escapeHtml(tag)}</span>`,
                           )
                           .join("")}
                     </div>
@@ -130,7 +130,7 @@ function displayTimeline() {
                     : ""
                 }
             </div>
-        `
+        `,
     )
     .join("");
 }
@@ -179,7 +179,7 @@ function fillEditFormData(entry) {
       dishDiv.className = "dish-input";
       dishDiv.innerHTML = `
                 <input type="text" placeholder="料理名" class="dish-name" value="${escapeHtml(
-                  dish
+                  dish,
                 )}">
                 <button type="button" class="remove-dish-btn">✖</button>
             `;
@@ -199,14 +199,14 @@ function fillEditFormData(entry) {
     selectedImages = Array.isArray(entry.images)
       ? entry.images.slice()
       : entry.image
-      ? [entry.image]
-      : [];
+        ? [entry.image]
+        : [];
     document.getElementById("imagePreview").style.display = "block";
     renderImagesPreview();
   }
 
   const submitButton = document.querySelector(
-    '#entryForm button[type="submit"]'
+    '#entryForm button[type="submit"]',
   );
   if (submitButton) submitButton.textContent = "変更を保存";
 }
@@ -228,3 +228,57 @@ async function updateEntry(updatedData) {
   }
 }
 window.updateEntry = updateEntry;
+
+// ===== Image Zoom for Home timeline =====
+function openImageModal(src, alt = "") {
+  const modal = document.getElementById("imageModal");
+  const img = document.getElementById("imageModalImg");
+  if (!modal || !img) return;
+
+  img.src = src;
+  img.alt = alt || "preview";
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeImageModal() {
+  const modal = document.getElementById("imageModal");
+  const img = document.getElementById("imageModalImg");
+  if (!modal || !img) return;
+
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+  img.src = "";
+}
+
+function initHomeImageZoom() {
+  const timeline = document.getElementById("timeline");
+  if (!timeline) return;
+
+  // Delegation: ảnh entry render động vẫn bắt được click
+  timeline.addEventListener("click", (e) => {
+    const img = e.target.closest("img.entry-image");
+    if (!img) return;
+    openImageModal(img.src, img.alt);
+  });
+
+  // Click nền đen để đóng
+  const modal = document.getElementById("imageModal");
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) closeImageModal();
+  });
+
+  // Nút X để đóng
+  document
+    .getElementById("closeImageModal")
+    ?.addEventListener("click", closeImageModal);
+
+  // ESC để đóng
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeImageModal();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initHomeImageZoom();
+});
