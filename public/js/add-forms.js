@@ -42,6 +42,44 @@ function initializeFormEventListeners() {
   const parseMapButton = document.getElementById("parseMapButton");
   if (parseMapButton) parseMapButton.addEventListener("click", parseMapLink);
 
+  const nearbyButton = document.getElementById("nearbyButton");
+  if (nearbyButton) nearbyButton.addEventListener("click", handleNearbySearch);
+
+  // event delegation for nearby results (items + close)
+  const nearbyResults = document.getElementById("nearbyResults");
+  if (nearbyResults) {
+    nearbyResults.addEventListener("click", (e) => {
+      const closeBtn = e.target.closest("[data-action='close-nearby']");
+      if (closeBtn) {
+        hideNearbyResults();
+        return;
+      }
+
+      const item = e.target.closest(".nearby-item");
+      if (!item) return;
+
+      const name = item.getAttribute("data-name") || "";
+      const address = item.getAttribute("data-address") || "";
+      const lat = parseFloat(item.getAttribute("data-lat") || "");
+      const lng = parseFloat(item.getAttribute("data-lng") || "");
+      if (name) {
+        const nameEl = document.getElementById("restaurantName");
+        if (nameEl) nameEl.value = name;
+      }
+
+      if (address) {
+        const addrEl = document.getElementById("restaurantAddress");
+        if (addrEl) addrEl.value = address;
+      } else if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+        // Fallback: reverse geocode using OSM (if server didn't return address)
+        getAddressFromOpenStreetMap(lat, lng);
+      }
+
+      hideNearbyResults();
+      document.getElementById("restaurantName")?.focus();
+    });
+  }
+
   const addDishButton = document.getElementById("addDishButton");
   if (addDishButton) addDishButton.addEventListener("click", addDishField);
 
@@ -124,7 +162,7 @@ function hideAddForm() {
 
 function resetForm() {
   selectedRating = 0;
-  selectedImage = [];
+  selectedImages = [];
 
   document.querySelectorAll(".star").forEach((star) => {
     star.textContent = "☆";
@@ -160,6 +198,9 @@ function resetForm() {
     initializeDishesEvents();
   }
   renderImagesPreview();
+
+  // clear nearby list
+  hideNearbyResults(true);
 }
 
 // === FORM TABS ===
@@ -310,23 +351,24 @@ function removeDishField(button) {
 function parseMapLink() {
   const linkEl = document.getElementById("mapsLink");
   const link = (linkEl?.value || "").trim();
-
   if (!link) return;
 
-  // Cảnh báo nếu là short link
+  // short link is hard to parse without expanding
   if (link.includes("goo.gl") || link.includes("maps.app.goo.gl")) {
     alert(
       "⚠️ このアプリはショートリンクには対応していません\n長いGoogle Mapsリンクを使用するか、手動で店舗名と住所を入力してください",
     );
-    linkEl.value = "";
-    linkEl.focus();
+    if (linkEl) {
+      linkEl.value = "";
+      linkEl.focus();
+    }
     return;
   }
 
   try {
     const url = new URL(link);
 
-    // 1) Lấy tên quán từ phần /place/
+    // 1) get place name from /place/
     let placeName = "";
     const pathParts = url.pathname.split("/");
     for (let i = 0; i < pathParts.length; i++) {
@@ -342,16 +384,14 @@ function parseMapLink() {
         break;
       }
     }
-
     if (placeName) {
       const nameEl = document.getElementById("restaurantName");
       if (nameEl) nameEl.value = placeName.trim();
     }
 
-    // 2) Ưu tiên lấy tọa độ "place" từ !3dLAT!4dLNG (có thể có nhiều cặp -> lấy cặp cuối)
+    // 2) prefer exact POI coordinates from !3dLAT!4dLNG (may appear multiple times; take last)
     let lat = "";
     let lng = "";
-
     const allPairs = [
       ...link.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g),
     ];
@@ -360,7 +400,7 @@ function parseMapLink() {
       lat = m[1];
       lng = m[2];
     } else {
-      // 3) Fallback: tọa độ trung tâm map @LAT,LNG
+      // fallback: map center @LAT,LNG
       const centerMatch = link.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
       if (centerMatch) {
         lat = centerMatch[1];
@@ -368,7 +408,7 @@ function parseMapLink() {
       }
     }
 
-    // 4) Nếu có tọa độ thì reverse geocode lấy địa chỉ
+    // 3) reverse geocode
     if (lat && lng) {
       getAddressFromOpenStreetMap(lat, lng);
     } else {
@@ -379,6 +419,129 @@ function parseMapLink() {
   } catch (error) {
     console.error("Link parse error:", error);
     alert("リンクの解析に失敗しました。手動で入力してください");
+  }
+}
+
+// === NEARBY (CURRENT LOCATION) ===
+function showNearbyResults(html) {
+  const box = document.getElementById("nearbyResults");
+  if (!box) return;
+  box.classList.add("active");
+  box.innerHTML = html;
+}
+
+function hideNearbyResults(clearOnly = false) {
+  const box = document.getElementById("nearbyResults");
+  if (!box) return;
+  box.classList.remove("active");
+  if (clearOnly) box.innerHTML = "";
+}
+
+function getCurrentPositionAsync(options) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation)
+      return reject(new Error("Geolocation not supported"));
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+async function handleNearbySearch() {
+  // If user isn't logged in, server will return 401 anyway, but we can shortcut.
+  await ensureDataLoaded();
+  if (!appData.user) {
+    alert("ログインしてください。");
+    return;
+  }
+
+  showNearbyResults(
+    `
+    <div class="nearby-header">
+      <div class="nearby-title">近くのお店</div>
+      <button type="button" class="nearby-close-btn" data-action="close-nearby">×</button>
+    </div>
+    <div class="nearby-loading">現在地を取得中…</div>
+  `,
+  );
+
+  try {
+    const pos = await getCurrentPositionAsync({
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 60000,
+    });
+
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+
+    showNearbyResults(
+      `
+      <div class="nearby-header">
+        <div class="nearby-title">近くのお店</div>
+        <button type="button" class="nearby-close-btn" data-action="close-nearby">×</button>
+      </div>
+      <div class="nearby-loading">近くのお店を検索中…</div>
+    `,
+    );
+
+    const radius = 150;
+    const limit = 8;
+    const data = await apiGet(
+      `/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&radius=${radius}&limit=${limit}`,
+    );
+
+    const places = Array.isArray(data.places) ? data.places : [];
+    if (!places.length) {
+      showNearbyResults(
+        `
+        <div class="nearby-header">
+          <div class="nearby-title">近くのお店</div>
+          <button type="button" class="nearby-close-btn" data-action="close-nearby">×</button>
+        </div>
+        <div class="nearby-empty">近くのお店が見つかりませんでした。リンク解析、または手動入力をご利用ください。</div>
+      `,
+      );
+      return;
+    }
+
+    const listHtml = places
+      .map((p) => {
+        const name = (p.name || "").toString();
+        const dist = Number(p.distanceMeters) || 0;
+        const lat2 = p.lat;
+        const lng2 = p.lng;
+        const distLabel = dist ? `${Math.round(dist)}m` : "";
+        const address = (p.address || "").toString();
+        return `
+          <div class="nearby-item" data-name="${escapeHtml(name)}" data-address="${escapeHtml(address)}" data-lat="${lat2}" data-lng="${lng2}">
+            <div class="nearby-name">${escapeHtml(name)}</div>
+            <div class="nearby-distance">${escapeHtml(distLabel)}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    showNearbyResults(
+      `
+      <div class="nearby-header">
+        <div class="nearby-title">近くのお店（タップして選択）</div>
+        <button type="button" class="nearby-close-btn" data-action="close-nearby">×</button>
+      </div>
+      ${listHtml}
+    `,
+    );
+  } catch (err) {
+    console.error("nearby error:", err);
+    // Geolocation errors often have .code
+    if (err?.code === 1) {
+      alert(
+        "位置情報の許可が必要です。許可できない場合は、リンク解析または店舗名検索をご利用ください。",
+      );
+    } else {
+      alert(
+        "近くのお店を取得できませんでした。リンク解析または手動入力をご利用ください。",
+      );
+    }
+    hideNearbyResults(true);
   }
 }
 

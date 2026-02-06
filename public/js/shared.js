@@ -1,5 +1,5 @@
 // === GLOBAL DATA MANAGEMENT ===
-const API_BASE = "/api";
+const API_BASE = "http://127.0.0.1:3000/api";
 
 let appData = {
   entries: [],
@@ -167,7 +167,7 @@ async function loadDataFromServer() {
 function ensureDataLoaded() {
   if (!__dataPromise)
     __dataPromise = loadDataFromServer().catch((e) =>
-      console.error("loadDataFromServer error:", e),
+      console.error("loadDataFromServer error:", e)
     );
   return __dataPromise;
 }

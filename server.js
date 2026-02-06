@@ -10,6 +10,7 @@ const app = express();
 // ---------- Config ----------
 const API_PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || "dev_secret";
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || "";
 
 // ---------- Middleware ----------
 app.use(express.json({ limit: "50mb" }));
@@ -71,6 +72,94 @@ function parseImagesFromBody(body) {
 
   return { imagesJson, coverImage };
 }
+
+// ---------- Nearby restaurants (OSM / Overpass - FREE) ----------
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.nchc.org.tw/api/interpreter",
+];
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const R = 6371000; // meters
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+async function fetchOverpassJson(query) {
+  const body = `data=${encodeURIComponent(query)}`;
+
+  let lastErr = null;
+  for (const url of OVERPASS_ENDPOINTS) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "User-Agent": "IEats/1.0 (student project)",
+        },
+        body,
+      });
+
+      if (!r.ok) {
+        lastErr = new Error(`Overpass status ${r.status}`);
+        continue;
+      }
+
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("Overpass failed");
+}
+
+
+// ---------- Nearby restaurants (Google Places API - optional) ----------
+// Uses Places API (New): Nearby Search (New) - POST /v1/places:searchNearby
+// Docs require FieldMask via X-Goog-FieldMask.
+async function fetchGoogleNearbyPlaces({ lat, lng, radius, limit }) {
+  const url = "https://places.googleapis.com/v1/places:searchNearby";
+
+  const body = {
+    // food-ish types that match IEats use-case
+    includedTypes: ["restaurant", "cafe", "fast_food", "bar"],
+    maxResultCount: limit,
+    rankPreference: "DISTANCE",
+    regionCode: "JP",
+    locationRestriction: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: radius,
+      },
+    },
+  };
+
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+      // ask only what we need (to reduce payload/cost)
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.location,places.formattedAddress",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Google Places error ${r.status}: ${t}`);
+  }
+
+  return r.json();
+}
+
 
 // ---------- Health ----------
 app.get("/api/health", async (req, res) => {
@@ -154,6 +243,122 @@ app.get("/api/me", (req, res) => {
 
 app.post("/api/auth/logout", (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
+});
+
+// ---------- Nearby (current location) ----------
+// GET /api/nearby?lat=...&lng=...&radius=150&limit=8
+// Returns simple POI list (name + address + lat/lng + distance).
+// Priority: Google Places (if GOOGLE_PLACES_API_KEY is set). Fallback: Overpass (free).
+app.get("/api/nearby", requireAuth, async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: "invalid_coords" });
+    }
+
+    const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 1000);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
+
+    // ---- 1) Google Places (recommended / most accurate) ----
+    if (GOOGLE_PLACES_API_KEY) {
+      const json = await fetchGoogleNearbyPlaces({ lat, lng, radius, limit });
+      const arr = Array.isArray(json?.places) ? json.places : [];
+
+      const map = new Map();
+      for (const p of arr) {
+        const name = (p?.displayName?.text || "").toString().trim();
+        const pid = (p?.id || "").toString().trim();
+        const plat = p?.location?.latitude;
+        const plng = p?.location?.longitude;
+        const address = (p?.formattedAddress || "").toString().trim();
+
+        if (!name || !pid) continue;
+        if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+
+        const dist = haversineMeters(lat, lng, plat, plng);
+        const key = pid; // stable id
+
+        const existing = map.get(key);
+        if (!existing || dist < existing.distanceMeters) {
+          map.set(key, {
+            placeId: pid,
+            name,
+            address,
+            lat: plat,
+            lng: plng,
+            distanceMeters: dist,
+          });
+        }
+      }
+
+      const places = Array.from(map.values())
+        .sort((a, b) => a.distanceMeters - b.distanceMeters)
+        .slice(0, limit);
+
+      return res.json({ ok: true, provider: "google", places });
+    }
+
+    // ---- 2) Overpass fallback (FREE) ----
+    const q = `
+[out:json][timeout:10];
+(
+  node(around:${radius},${lat},${lng})["name"]["amenity"~"^(restaurant|cafe|fast_food|bar|pub)$"];
+  way(around:${radius},${lat},${lng})["name"]["amenity"~"^(restaurant|cafe|fast_food|bar|pub)$"];
+  relation(around:${radius},${lat},${lng})["name"]["amenity"~"^(restaurant|cafe|fast_food|bar|pub)$"];
+);
+out center tags;
+`;
+
+    const json = await fetchOverpassJson(q);
+    const elements = Array.isArray(json?.elements) ? json.elements : [];
+
+    const map = new Map();
+    for (const el of elements) {
+      const name = (el?.tags?.name || "").toString().trim();
+      if (!name) continue;
+
+      // coords
+      let plat = null;
+      let plng = null;
+      if (typeof el.lat === "number" && typeof el.lon === "number") {
+        plat = el.lat;
+        plng = el.lon;
+      } else if (
+        el.center &&
+        typeof el.center.lat === "number" &&
+        typeof el.center.lon === "number"
+      ) {
+        plat = el.center.lat;
+        plng = el.center.lon;
+      }
+      if (plat === null || plng === null) continue;
+
+      const dist = haversineMeters(lat, lng, plat, plng);
+      const key = name.toLowerCase();
+
+      const existing = map.get(key);
+      if (!existing || dist < existing.distanceMeters) {
+        map.set(key, {
+          placeId: null,
+          name,
+          address: "",
+          lat: plat,
+          lng: plng,
+          distanceMeters: dist,
+        });
+      }
+    }
+
+    const places = Array.from(map.values())
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .slice(0, limit);
+
+    res.json({ ok: true, provider: "overpass", places });
+  } catch (e) {
+    console.error("NEARBY ERROR:", e);
+    res.status(500).json({ error: "server_error" });
+  }
 });
 
 // ---------- Entries ----------
