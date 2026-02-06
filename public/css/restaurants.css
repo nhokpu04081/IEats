@@ -29,3 +29,29 @@
   outline: 3px solid #667eea;
   outline-offset: 2px;
 }
+
+.restaurant-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.gmaps-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  color: #333;
+  font-size: 0.85rem;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gmaps-btn:hover {
+  background: #f7f7f7;
+}
