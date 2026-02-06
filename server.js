@@ -7,14 +7,10 @@ const path = require("path");
 
 const app = express();
 
-// Node fetch helper (Railway may run Node < 18)
-const fetchFn =
-  global.fetch ||
-  ((...args) => import("node-fetch").then(({ default: f }) => f(...args)));
-
 // ---------- Config ----------
 const API_PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || "dev_secret";
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || "";
 
 // ---------- Middleware ----------
 app.use(express.json({ limit: "50mb" }));
@@ -101,7 +97,7 @@ async function fetchOverpassJson(query) {
   let lastErr = null;
   for (const url of OVERPASS_ENDPOINTS) {
     try {
-      const r = await fetchFn(url, {
+      const r = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -123,17 +119,19 @@ async function fetchOverpassJson(query) {
   throw lastErr || new Error("Overpass failed");
 }
 
-// ---------- Google Places (New) Nearby Search ----------
-// If GOOGLE_PLACES_API_KEY is set, prefer Google for better accuracy.
-async function fetchGoogleNearby(lat, lng, radius, limit) {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) throw new Error("missing_google_key");
+
+// ---------- Nearby restaurants (Google Places API - optional) ----------
+// Uses Places API (New): Nearby Search (New) - POST /v1/places:searchNearby
+// Docs require FieldMask via X-Goog-FieldMask.
+async function fetchGoogleNearbyPlaces({ lat, lng, radius, limit }) {
+  const url = "https://places.googleapis.com/v1/places:searchNearby";
 
   const body = {
-    includedTypes: ["restaurant", "cafe"],
+    // food-ish types that match IEats use-case
+    includedTypes: ["restaurant", "cafe", "fast_food", "bar"],
     maxResultCount: limit,
     rankPreference: "DISTANCE",
-    languageCode: "ja",
+    regionCode: "JP",
     locationRestriction: {
       circle: {
         center: { latitude: lat, longitude: lng },
@@ -142,46 +140,26 @@ async function fetchGoogleNearby(lat, lng, radius, limit) {
     },
   };
 
-  const r = await fetchFn("https://places.googleapis.com/v1/places:searchNearby", {
+  const r = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      // FieldMask is REQUIRED for Nearby Search (New). No spaces allowed.
-      "X-Goog-FieldMask": "places.id,places.displayName,places.location",
+      "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+      // ask only what we need (to reduce payload/cost)
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.location,places.formattedAddress",
     },
     body: JSON.stringify(body),
   });
 
-  const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const msg = data?.error?.message || `Google status ${r.status}`;
-    const err = new Error(msg);
-    err.google = data;
-    err.status = r.status;
-    throw err;
+    const t = await r.text().catch(() => "");
+    throw new Error(`Google Places error ${r.status}: ${t}`);
   }
 
-  const places = Array.isArray(data?.places) ? data.places : [];
-  return places
-    .map((p) => {
-      const plat = p?.location?.latitude;
-      const plng = p?.location?.longitude;
-      if (typeof plat !== "number" || typeof plng !== "number") return null;
-      const name = p?.displayName?.text || "";
-      const dist = haversineMeters(lat, lng, plat, plng);
-      return {
-        name,
-        lat: plat,
-        lng: plng,
-        distanceMeters: dist,
-        placeId: p?.id || null,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, limit);
+  return r.json();
 }
+
 
 // ---------- Health ----------
 app.get("/api/health", async (req, res) => {
@@ -269,32 +247,90 @@ app.post("/api/auth/logout", (req, res) => {
 
 // ---------- Nearby (current location) ----------
 // GET /api/nearby?lat=...&lng=...&radius=150&limit=8
-// Returns simple POI list (name + lat/lng + distance).
+// Returns simple POI list.
+// Priority:
+//  1) Google Places API (New) if GOOGLE_PLACES_API_KEY is set
+//  2) Overpass (OSM - FREE) fallback
 app.get("/api/nearby", requireAuth, async (req, res) => {
-  try {
-    const lat = Number(req.query.lat);
-    const lng = Number(req.query.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.status(400).json({ error: "invalid_coords" });
-    }
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
 
-    const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 500);
-    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "invalid_coords" });
+  }
 
-    // 1) Prefer Google Places (New) if key exists
-    if (process.env.GOOGLE_PLACES_API_KEY) {
-      try {
-        const places = await fetchGoogleNearby(lat, lng, radius, limit);
-        return res.json({ ok: true, places });
-      } catch (e) {
-        console.error("NEARBY GOOGLE ERROR:", e?.message || e, e?.google || "");
-        // fallback to Overpass below
+  const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 500);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
+
+  // ---- 1) Google Places (New) ----
+  const GOOGLE_KEY = process.env.GOOGLE_PLACES_API_KEY;
+  if (GOOGLE_KEY) {
+    try {
+      const body = {
+        includedTypes: ["restaurant"],
+        maxResultCount: limit,
+        rankPreference: "DISTANCE",
+        languageCode: "ja",
+        regionCode: "JP",
+        locationRestriction: {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius: Number(radius),
+          },
+        },
+      };
+
+      const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_KEY,
+          // FieldMask is REQUIRED for Places API (New)
+          "X-Goog-FieldMask":
+            "places.id,places.displayName,places.formattedAddress,places.location",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await r.json().catch(() => ({}));
+
+      if (r.ok) {
+        const places = (Array.isArray(data?.places) ? data.places : [])
+          .map((p) => {
+            const plat = p?.location?.latitude;
+            const plng = p?.location?.longitude;
+            if (!Number.isFinite(plat) || !Number.isFinite(plng)) return null;
+
+            const name = (p?.displayName?.text || "").toString().trim();
+            if (!name) return null;
+
+            return {
+              placeId: p?.id || null,
+              name,
+              address: (p?.formattedAddress || "").toString(),
+                            lat: plat,
+              lng: plng,
+              distanceMeters: haversineMeters(lat, lng, plat, plng),
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.distanceMeters - b.distanceMeters)
+          .slice(0, limit);
+
+        return res.json({ ok: true, places, source: "google" });
       }
-    }
 
-    // 2) Fallback: OSM / Overpass (FREE)
+      // If Google fails, fall back to Overpass.
+      console.error("NEARBY GOOGLE ERROR:", r.status, data);
+    } catch (e) {
+      console.error("NEARBY GOOGLE EXCEPTION:", e);
+    }
+  }
+
+  // ---- 2) Overpass fallback (FREE) ----
+  try {
     const q = `
-[out:json][timeout:25];
+[out:json][timeout:10];
 (
   node(around:${radius},${lat},${lng})["name"]["amenity"~"^(restaurant|cafe|fast_food|bar|pub)$"];
   way(around:${radius},${lat},${lng})["name"]["amenity"~"^(restaurant|cafe|fast_food|bar|pub)$"];
@@ -311,7 +347,6 @@ out center tags;
       const name = (el?.tags?.name || "").toString().trim();
       if (!name) continue;
 
-      // coords
       let plat = null;
       let plng = null;
       if (typeof el.lat === "number" && typeof el.lon === "number") {
@@ -345,13 +380,11 @@ out center tags;
       .sort((a, b) => a.distanceMeters - b.distanceMeters)
       .slice(0, limit);
 
-    res.json({ ok: true, places });
+    res.json({ ok: true, places, source: "overpass" });
   } catch (e) {
     console.error("NEARBY ERROR:", e);
     res.status(500).json({ error: "server_error" });
   }
-});
-
 });
 
 // ---------- Entries ----------
