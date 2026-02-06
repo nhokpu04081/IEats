@@ -307,66 +307,7 @@ function removeDishField(button) {
 }
 
 // === MAP LINK PARSING ===
-function parseMapLink() {
-  const link = document.getElementById("mapsLink").value;
-
-  if (link.includes("goo.gl") || link.includes("maps.app.goo.gl")) {
-    alert(
-      "⚠️ このアプリはショートリンクには対応していません\n長いGoogle Mapsリンクを使用するか、手動で店舗名と住所を入力してください",
-    );
-    document.getElementById("mapsLink").value = "";
-    document.getElementById("mapsLink").focus();
-    return;
-  }
-
-  if (!link.includes("@") || !link.includes(",")) {
-    alert(
-      "⚠️ このリンクから座標を取得できません\n手動で店舗名と住所を入力してください",
-    );
-    return;
-  }
-
-  try {
-    const coordRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-    const match = link.match(coordRegex);
-
-    let lat = "";
-    let lng = "";
-
-    if (match) {
-      lat = match[1];
-      lng = match[2];
-
-      getAddressFromOpenStreetMap(lat, lng);
-    }
-
-    let placeName = "";
-    const url = new URL(link);
-    const pathParts = url.pathname.split("/");
-
-    for (let i = 0; i < pathParts.length; i++) {
-      if (pathParts[i] === "place" && i + 1 < pathParts.length) {
-        const nextPart = pathParts[i + 1];
-        const atIndex = nextPart.indexOf("@");
-
-        if (atIndex > 0) {
-          placeName = decodeURIComponent(
-            nextPart.substring(0, atIndex).replace(/\+/g, " "),
-          );
-        } else {
-          placeName = decodeURIComponent(nextPart.replace(/\+/g, " "));
-        }
-        break;
-      }
-    }
-
-    if (placeName) {
-      document.getElementById("restaurantName").value = placeName;
-    }
-  } catch (error) {
-    console.log("Link parse error:", error);
-  }
-}
+extractLatLngFromGoogleMapsUrl;
 
 // === FORM SUBMISSION HANDLERS (ONLY THIS PART CHANGED TO MYSQL/API) ===
 async function handleEntrySubmit(e) {

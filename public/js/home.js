@@ -140,6 +140,8 @@ async function deleteEntry(entryId) {
 
   try {
     await apiDelete(`/entries/${entryId}`);
+    alert("削除しました！");
+
     await refreshData();
     displayTimeline();
   } catch (e) {
