@@ -78,10 +78,7 @@ function normalizeForMatch(s) {
   return (s ?? "")
     .toString()
     .toLowerCase()
-    .replace(
-      /[\s\-–—_.,'"`~!@#$%^&*+=|:;<>?()（）［］【】\[\]\/\\]+/g,
-      "",
-    );
+    .replace(/[\s\-–—_.,'"`~!@#$%^&*+=|:;<>?()（）［］【】\[\]\/\\]+/g, "");
 }
 
 // Dice coefficient on bigrams (fast enough for short place names)
@@ -106,10 +103,15 @@ function diceCoefficient(a, b) {
     }
   }
 
-  return (2 * matches) / ((a.length - 1) + (b.length - 1));
+  return (2 * matches) / (a.length - 1 + (b.length - 1));
 }
 
-function pickBestPlaceByNameAndDistance({ targetName, originLat, originLng, places }) {
+function pickBestPlaceByNameAndDistance({
+  targetName,
+  originLat,
+  originLng,
+  places,
+}) {
   const t = normalizeForMatch(targetName);
   let best = null;
   let bestScore = -Infinity;
@@ -136,7 +138,14 @@ function pickBestPlaceByNameAndDistance({ targetName, originLat, originLng, plac
     const score = sim * 1000 - dist;
     if (score > bestScore) {
       bestScore = score;
-      best = { pid, name, plat, plng, dist, address: (p?.formattedAddress || "").toString().trim() };
+      best = {
+        pid,
+        name,
+        plat,
+        plng,
+        dist,
+        address: (p?.formattedAddress || "").toString().trim(),
+      };
     }
   }
 
@@ -189,7 +198,6 @@ async function fetchOverpassJson(query) {
   throw lastErr || new Error("Overpass failed");
 }
 
-
 // ---------- Nearby restaurants (Google Places API - optional) ----------
 // Uses Places API (New): Nearby Search (New) - POST /v1/places:searchNearby
 // Docs require FieldMask via X-Goog-FieldMask.
@@ -232,7 +240,13 @@ async function fetchGoogleNearbyPlaces({ lat, lng, radius, limit }) {
 
 // Uses Places API (New): Text Search (New) - POST /v1/places:searchText
 // Useful when you already know a place name and want the most accurate match.
-async function fetchGoogleTextSearch({ textQuery, lat, lng, radius = 800, limit = 10 }) {
+async function fetchGoogleTextSearch({
+  textQuery,
+  lat,
+  lng,
+  radius = 800,
+  limit = 10,
+}) {
   const url = "https://places.googleapis.com/v1/places:searchText";
 
   const body = {
@@ -280,8 +294,7 @@ async function fetchGooglePlaceDetails(placeId) {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
       // FieldMask is REQUIRED for Place Details (New)
-      "X-Goog-FieldMask":
-        "displayName,formattedAddress,googleMapsUri,location",
+      "X-Goog-FieldMask": "displayName,formattedAddress,googleMapsUri,location",
     },
   });
 
@@ -292,7 +305,12 @@ async function fetchGooglePlaceDetails(placeId) {
   return r.json();
 }
 
-function pickBestPlaceByNameAndDistance({ targetName, centerLat, centerLng, places }) {
+function pickBestPlaceByNameAndDistance({
+  targetName,
+  centerLat,
+  centerLng,
+  places,
+}) {
   const t = normalizeForMatch(targetName);
   let best = null;
   let bestScore = -Infinity;
@@ -320,7 +338,6 @@ function pickBestPlaceByNameAndDistance({ targetName, centerLat, centerLng, plac
   }
   return best?.p || null;
 }
-
 
 // ---------- Health ----------
 app.get("/api/health", async (req, res) => {
@@ -527,14 +544,18 @@ out center tags;
     return res.json({
       ok: true,
       provider: "overpass",
-      googleError: googleError ? String(googleError.message || googleError) : null,
+      googleError: googleError
+        ? String(googleError.message || googleError)
+        : null,
       places,
     });
   } catch (e) {
     console.error("NEARBY OVERPASS ERROR:", e);
     return res.status(500).json({
       error: "server_error",
-      googleError: googleError ? String(googleError.message || googleError) : null,
+      googleError: googleError
+        ? String(googleError.message || googleError)
+        : null,
     });
   }
 });
@@ -598,7 +619,9 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
     return res.json({
       ok: true,
       provider: "google_failed",
-      googleError: googleError ? String(googleError.message || googleError) : null,
+      googleError: googleError
+        ? String(googleError.message || googleError)
+        : null,
       place: null,
     });
   }
@@ -617,7 +640,9 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
     (best?.displayName?.text || "").toString().trim() || targetName || "";
   let address = (best?.formattedAddress || "").toString().trim();
   let plat =
-    typeof best?.location?.latitude === "number" ? best.location.latitude : null;
+    typeof best?.location?.latitude === "number"
+      ? best.location.latitude
+      : null;
   let plng =
     typeof best?.location?.longitude === "number"
       ? best.location.longitude
@@ -626,7 +651,10 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
   let googleMapsUri = (best?.googleMapsUri || "").toString().trim() || null;
 
   // ensure address/uri are present via Place Details (New) when needed
-  if (placeId && (!address || !googleMapsUri || plat === null || plng === null)) {
+  if (
+    placeId &&
+    (!address || !googleMapsUri || plat === null || plng === null)
+  ) {
     try {
       const details = await fetchGooglePlaceDetails(placeId);
       address =
@@ -634,7 +662,9 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
         (details?.formattedAddress || "").toString().trim() ||
         (details?.shortFormattedAddress || "").toString().trim();
       googleMapsUri =
-        googleMapsUri || (details?.googleMapsUri || "").toString().trim() || null;
+        googleMapsUri ||
+        (details?.googleMapsUri || "").toString().trim() ||
+        null;
       if (plat === null && typeof details?.location?.latitude === "number")
         plat = details.location.latitude;
       if (plng === null && typeof details?.location?.longitude === "number")
@@ -652,7 +682,9 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
   return res.json({
     ok: true,
     provider,
-    googleError: googleError ? String(googleError.message || googleError) : null,
+    googleError: googleError
+      ? String(googleError.message || googleError)
+      : null,
     place: {
       placeId,
       name,
@@ -674,7 +706,7 @@ app.get("/api/entries", requireAuth, async (req, res) => {
       `SELECT id, restaurant_name, restaurant_address, visit_date, overall_rating, content, image, images_json
        FROM entries
        WHERE user_id=?
-       ORDER BY visit_date DESC`,
+       ORDER BY visit_date DESC, id DESC`,
       [userId],
     );
 
