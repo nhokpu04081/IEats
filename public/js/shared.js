@@ -1,5 +1,19 @@
 // === GLOBAL DATA MANAGEMENT ===
-const API_BASE = "http://127.0.0.1:3000/api";
+const API_BASE = (() => {
+  const { protocol, hostname, port, origin } = window.location;
+
+  // Nếu đang chạy Live Server (5500/...) thì vẫn gọi backend local 3000
+  if (
+    (hostname === "127.0.0.1" || hostname === "localhost") &&
+    port &&
+    port !== "3000"
+  ) {
+    return `${protocol}//${hostname}:3000/api`;
+  }
+
+  // Railway / Production: gọi cùng domain hiện tại
+  return `${origin}/api`;
+})();
 
 let appData = {
   entries: [],
@@ -167,7 +181,7 @@ async function loadDataFromServer() {
 function ensureDataLoaded() {
   if (!__dataPromise)
     __dataPromise = loadDataFromServer().catch((e) =>
-      console.error("loadDataFromServer error:", e)
+      console.error("loadDataFromServer error:", e),
     );
   return __dataPromise;
 }
