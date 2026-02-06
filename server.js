@@ -73,6 +73,76 @@ function parseImagesFromBody(body) {
   return { imagesJson, coverImage };
 }
 
+// ---------- Google Places helpers for link resolving ----------
+function normalizeForMatch(s) {
+  return (s ?? "")
+    .toString()
+    .toLowerCase()
+    .replace(
+      /[\s\-–—_.,'"`~!@#$%^&*+=|:;<>?()（）［］【】\[\]\/\\]+/g,
+      "",
+    );
+}
+
+// Dice coefficient on bigrams (fast enough for short place names)
+function diceCoefficient(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+
+  const bigrams = new Map();
+  for (let i = 0; i < a.length - 1; i++) {
+    const gram = a.slice(i, i + 2);
+    bigrams.set(gram, (bigrams.get(gram) || 0) + 1);
+  }
+
+  let matches = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const gram = b.slice(i, i + 2);
+    const count = bigrams.get(gram) || 0;
+    if (count > 0) {
+      bigrams.set(gram, count - 1);
+      matches++;
+    }
+  }
+
+  return (2 * matches) / ((a.length - 1) + (b.length - 1));
+}
+
+function pickBestPlaceByNameAndDistance({ targetName, originLat, originLng, places }) {
+  const t = normalizeForMatch(targetName);
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const p of places) {
+    const name = (p?.displayName?.text || "").toString().trim();
+    const pid = (p?.id || "").toString().trim();
+    const plat = p?.location?.latitude;
+    const plng = p?.location?.longitude;
+    if (!name || !pid) continue;
+    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+
+    const n = normalizeForMatch(name);
+    const dist = haversineMeters(originLat, originLng, plat, plng);
+
+    let sim = 0;
+    if (t && n) {
+      if (n === t) sim = 1;
+      else if (n.includes(t) || t.includes(n)) sim = 0.92;
+      else sim = diceCoefficient(t, n);
+    }
+
+    // Score: prefer name match strongly, then distance as tie-breaker
+    const score = sim * 1000 - dist;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { pid, name, plat, plng, dist, address: (p?.formattedAddress || "").toString().trim() };
+    }
+  }
+
+  return best;
+}
+
 // ---------- Nearby restaurants (OSM / Overpass - FREE) ----------
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -158,6 +228,59 @@ async function fetchGoogleNearbyPlaces({ lat, lng, radius, limit }) {
   }
 
   return r.json();
+}
+
+// Places API (New): Place Details (New) - GET /v1/places/{placeId}
+async function fetchGooglePlaceDetails(placeId) {
+  const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(
+    placeId,
+  )}`;
+
+  const r = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+      // FieldMask is REQUIRED for Place Details (New)
+      "X-Goog-FieldMask":
+        "displayName,formattedAddress,googleMapsUri,location",
+    },
+  });
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Google Place Details error ${r.status}: ${t}`);
+  }
+  return r.json();
+}
+
+function pickBestPlaceByNameAndDistance({ targetName, centerLat, centerLng, places }) {
+  const t = normalizeForMatch(targetName);
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const p of places) {
+    const name = (p?.displayName?.text || "").toString().trim();
+    const pid = (p?.id || "").toString().trim();
+    const plat = p?.location?.latitude;
+    const plng = p?.location?.longitude;
+    if (!pid || !name) continue;
+    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+
+    const n = normalizeForMatch(name);
+    const dist = haversineMeters(centerLat, centerLng, plat, plng);
+
+    // Similarity: dice on bigrams (0..1)
+    const sim = t ? diceCoefficient(t, n) : 0;
+    const containsBoost = t && (n.includes(t) || t.includes(n)) ? 0.2 : 0;
+    const score = (sim + containsBoost) * 1000 - dist; // distance tie-break
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = { p, dist, score };
+    }
+  }
+  return best?.p || null;
 }
 
 
@@ -247,88 +370,59 @@ app.post("/api/auth/logout", (req, res) => {
 
 // ---------- Nearby (current location) ----------
 // GET /api/nearby?lat=...&lng=...&radius=150&limit=8
-// Returns simple POI list.
-// Priority:
-//  1) Google Places API (New) if GOOGLE_PLACES_API_KEY is set
-//  2) Overpass (OSM - FREE) fallback
+// Returns simple POI list (name + address + lat/lng + distance).
+// Priority: Google Places (if GOOGLE_PLACES_API_KEY is set). Fallback: Overpass (free).
 app.get("/api/nearby", requireAuth, async (req, res) => {
-  const lat = Number(req.query.lat);
-  const lng = Number(req.query.lng);
+  try {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: "invalid_coords" });
+    }
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return res.status(400).json({ error: "invalid_coords" });
-  }
+    const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 1000);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
 
-  const radius = Math.min(Math.max(Number(req.query.radius) || 150, 20), 500);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
+    // ---- 1) Google Places (recommended / most accurate) ----
+    if (GOOGLE_PLACES_API_KEY) {
+      const json = await fetchGoogleNearbyPlaces({ lat, lng, radius, limit });
+      const arr = Array.isArray(json?.places) ? json.places : [];
 
-  // ---- 1) Google Places (New) ----
-  const GOOGLE_KEY = process.env.GOOGLE_PLACES_API_KEY;
-  if (GOOGLE_KEY) {
-    try {
-      const body = {
-        includedTypes: ["restaurant"],
-        maxResultCount: limit,
-        rankPreference: "DISTANCE",
-        languageCode: "ja",
-        regionCode: "JP",
-        locationRestriction: {
-          circle: {
-            center: { latitude: lat, longitude: lng },
-            radius: Number(radius),
-          },
-        },
-      };
+      const map = new Map();
+      for (const p of arr) {
+        const name = (p?.displayName?.text || "").toString().trim();
+        const pid = (p?.id || "").toString().trim();
+        const plat = p?.location?.latitude;
+        const plng = p?.location?.longitude;
+        const address = (p?.formattedAddress || "").toString().trim();
 
-      const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_KEY,
-          // FieldMask is REQUIRED for Places API (New)
-          "X-Goog-FieldMask":
-            "places.id,places.displayName,places.formattedAddress,places.location",
-        },
-        body: JSON.stringify(body),
-      });
+        if (!name || !pid) continue;
+        if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
 
-      const data = await r.json().catch(() => ({}));
+        const dist = haversineMeters(lat, lng, plat, plng);
+        const key = pid; // stable id
 
-      if (r.ok) {
-        const places = (Array.isArray(data?.places) ? data.places : [])
-          .map((p) => {
-            const plat = p?.location?.latitude;
-            const plng = p?.location?.longitude;
-            if (!Number.isFinite(plat) || !Number.isFinite(plng)) return null;
-
-            const name = (p?.displayName?.text || "").toString().trim();
-            if (!name) return null;
-
-            return {
-              placeId: p?.id || null,
-              name,
-              address: (p?.formattedAddress || "").toString(),
-                            lat: plat,
-              lng: plng,
-              distanceMeters: haversineMeters(lat, lng, plat, plng),
-            };
-          })
-          .filter(Boolean)
-          .sort((a, b) => a.distanceMeters - b.distanceMeters)
-          .slice(0, limit);
-
-        return res.json({ ok: true, places, source: "google" });
+        const existing = map.get(key);
+        if (!existing || dist < existing.distanceMeters) {
+          map.set(key, {
+            placeId: pid,
+            name,
+            address,
+            lat: plat,
+            lng: plng,
+            distanceMeters: dist,
+          });
+        }
       }
 
-      // If Google fails, fall back to Overpass.
-      console.error("NEARBY GOOGLE ERROR:", r.status, data);
-    } catch (e) {
-      console.error("NEARBY GOOGLE EXCEPTION:", e);
-    }
-  }
+      const places = Array.from(map.values())
+        .sort((a, b) => a.distanceMeters - b.distanceMeters)
+        .slice(0, limit);
 
-  // ---- 2) Overpass fallback (FREE) ----
-  try {
+      return res.json({ ok: true, provider: "google", places });
+    }
+
+    // ---- 2) Overpass fallback (FREE) ----
     const q = `
 [out:json][timeout:10];
 (
@@ -347,6 +441,7 @@ out center tags;
       const name = (el?.tags?.name || "").toString().trim();
       if (!name) continue;
 
+      // coords
       let plat = null;
       let plng = null;
       if (typeof el.lat === "number" && typeof el.lon === "number") {
@@ -368,7 +463,9 @@ out center tags;
       const existing = map.get(key);
       if (!existing || dist < existing.distanceMeters) {
         map.set(key, {
+          placeId: null,
           name,
+          address: "",
           lat: plat,
           lng: plng,
           distanceMeters: dist,
@@ -380,9 +477,79 @@ out center tags;
       .sort((a, b) => a.distanceMeters - b.distanceMeters)
       .slice(0, limit);
 
-    res.json({ ok: true, places, source: "overpass" });
+    res.json({ ok: true, provider: "overpass", places });
   } catch (e) {
     console.error("NEARBY ERROR:", e);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// ---------- Resolve Google Maps link to precise place (Google Places preferred) ----------
+// POST /api/maps/resolve { name?, lat, lng }
+// Returns: { ok, provider, place: { placeId, name, address, lat, lng, googleMapsUri } }
+app.post("/api/maps/resolve", requireAuth, async (req, res) => {
+  try {
+    const targetName = normalizeString(req.body?.name);
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: "invalid_coords" });
+    }
+
+    const radius = Math.min(Math.max(Number(req.body?.radius) || 120, 20), 500);
+    const limit = Math.min(Math.max(Number(req.body?.limit) || 10, 1), 20);
+
+    // ---- 1) Google Places (best accuracy) ----
+    if (GOOGLE_PLACES_API_KEY) {
+      const json = await fetchGoogleNearbyPlaces({ lat, lng, radius, limit });
+      const arr = Array.isArray(json?.places) ? json.places : [];
+
+      // pick best by name similarity + distance
+      const best = pickBestPlaceByNameAndDistance({
+        targetName,
+        centerLat: lat,
+        centerLng: lng,
+        places: arr,
+      });
+
+      if (!best) {
+        return res.status(404).json({ error: "not_found" });
+      }
+
+      // ensure address exists (some places may not include it)
+      let address = (best?.formattedAddress || "").toString().trim();
+      let googleMapsUri = (best?.googleMapsUri || "").toString().trim();
+
+      if (!address || !googleMapsUri) {
+        const details = await fetchGooglePlaceDetails(best.id);
+        address = (details?.formattedAddress || address).toString().trim();
+        googleMapsUri = (details?.googleMapsUri || googleMapsUri)
+          .toString()
+          .trim();
+      }
+
+      return res.json({
+        ok: true,
+        provider: "google",
+        place: {
+          placeId: best.id,
+          name: (best?.displayName?.text || "").toString().trim(),
+          address,
+          lat: best?.location?.latitude ?? null,
+          lng: best?.location?.longitude ?? null,
+          googleMapsUri,
+        },
+      });
+    }
+
+    // ---- 2) Fallback: return coords only (client can use OSM reverse) ----
+    res.json({
+      ok: true,
+      provider: "coords_only",
+      place: { placeId: null, name: targetName, address: "", lat, lng },
+    });
+  } catch (e) {
+    console.error("MAPS RESOLVE ERROR:", e);
     res.status(500).json({ error: "server_error" });
   }
 });

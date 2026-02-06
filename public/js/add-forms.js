@@ -348,7 +348,7 @@ function removeDishField(button) {
 }
 
 // === MAP LINK PARSING ===
-function parseMapLink() {
+async function parseMapLink() {
   const linkEl = document.getElementById("mapsLink");
   const link = (linkEl?.value || "").trim();
   if (!link) return;
@@ -408,8 +408,39 @@ function parseMapLink() {
       }
     }
 
-    // 3) reverse geocode
+    // 3) get address (prefer Google Places via server for accuracy)
     if (lat && lng) {
+      await ensureDataLoaded();
+      if (!appData.user) {
+        alert("ログインしてください。");
+        return;
+      }
+
+      const addrEl = document.getElementById("restaurantAddress");
+      if (addrEl) addrEl.placeholder = "住所を取得中...";
+
+      try {
+        const resp = await apiPost("/maps/resolve", {
+          name: placeName || "",
+          lat: Number(lat),
+          lng: Number(lng),
+        });
+
+        const place = resp?.place || null;
+        if (place) {
+          const nameEl = document.getElementById("restaurantName");
+          if (nameEl && place.name) nameEl.value = place.name;
+          if (addrEl && place.address) {
+            addrEl.value = place.address;
+            addrEl.placeholder = "";
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Google resolve failed, fallback to OSM:", e);
+      }
+
+      // fallback: free OSM reverse
       getAddressFromOpenStreetMap(lat, lng);
     } else {
       alert(
