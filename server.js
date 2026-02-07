@@ -321,6 +321,22 @@ async function fetchGoogleTextSearch({ textQuery, lat, lng, radius, limit }) {
   );
 }
 
+async function fetchGoogleTextSearchNoBias({ textQuery, limit }) {
+  const url = "https://places.googleapis.com/v1/places:searchText";
+  const body = {
+    textQuery,
+    maxResultCount: limit,
+    regionCode: "JP",
+    languageCode: "ja",
+  };
+
+  return googlePostJson(
+    url,
+    body,
+    "places.id,places.displayName,places.location,places.formattedAddress,places.googleMapsUri",
+  );
+}
+
 // Place Details (New): GET /v1/places/{placeId}
 async function fetchGooglePlaceDetails(placeId) {
   const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(
@@ -413,25 +429,34 @@ async function expandGoogleMapsShortUrl(inputUrl) {
 
 function extractNameLatLngFromGoogleMapsUrl(link) {
   let name = "";
+  let query = "";
   let lat = null;
   let lng = null;
 
   try {
     const url = new URL(link);
 
-    // name from /place/<NAME>
+    // ✅ Case A: maps.google.com?q=...
+    const q = url.searchParams.get("q");
+    if (q) {
+      query = q.replace(/\+/g, " ").trim(); // full "Name, Address..."
+      if (query) name = query.split(",")[0].trim(); // lấy tên trước dấu phẩy
+    }
+
+    // ✅ Case B: /place/<NAME>
     const parts = url.pathname.split("/").filter(Boolean);
     for (let i = 0; i < parts.length; i++) {
       if (parts[i] === "place" && parts[i + 1]) {
         const seg = parts[i + 1];
         const at = seg.indexOf("@");
         const raw = at > 0 ? seg.slice(0, at) : seg;
-        name = decodeURIComponent(raw.replace(/\+/g, " ")).trim();
+        name = decodeURIComponent(raw.replace(/\+/g, " ")).trim() || name;
+        if (!query && name) query = name;
         break;
       }
     }
 
-    // coords: prefer !3d..!4d.. then fallback @lat,lng
+    // ✅ coords: prefer !3d..!4d.. then fallback @lat,lng
     let m = link.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
     if (!m) m = link.match(/!8m2!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
     if (!m) m = link.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
@@ -444,7 +469,7 @@ function extractNameLatLngFromGoogleMapsUrl(link) {
     }
   } catch (_) {}
 
-  return { name, lat, lng };
+  return { name, query, lat, lng };
 }
 
 // ---------- Health ----------
@@ -612,6 +637,7 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
     let targetName = normalizeString(req.body?.name);
     let lat = Number(req.body?.lat);
     let lng = Number(req.body?.lng);
+    let extracted = null;
 
     if (link) {
       try {
@@ -621,14 +647,104 @@ app.post("/api/maps/resolve", requireAuth, async (req, res) => {
         }
       } catch (_) {}
 
-      const extracted = extractNameLatLngFromGoogleMapsUrl(link);
-      if (!targetName && extracted.name) targetName = extracted.name;
+      extracted = extractNameLatLngFromGoogleMapsUrl(link);
+      if (!targetName && extracted.name)
+        targetName = normalizeString(extracted.name);
       if (!Number.isFinite(lat) && extracted.lat !== null) lat = extracted.lat;
       if (!Number.isFinite(lng) && extracted.lng !== null) lng = extracted.lng;
     }
 
+    // ✅ NEW: nếu không có coords (thường do short link redirect ra maps.google.com?q=...)
+    // thì dùng Google Text Search (no bias) dựa trên query/name
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.json({ ok: true, provider: "coords_missing", place: null });
+      if (!GOOGLE_PLACES_API_KEY) {
+        return res.json({ ok: true, provider: "coords_only", place: null });
+      }
+
+      const textQuery = normalizeString(extracted?.query || targetName || "");
+      if (!textQuery) {
+        return res.json({ ok: true, provider: "coords_missing", place: null });
+      }
+
+      try {
+        const json = await fetchGoogleTextSearchNoBias({ textQuery, limit: 5 });
+        const places = Array.isArray(json?.places) ? json.places : [];
+        if (!places.length) {
+          return res.json({ ok: true, provider: "google_failed", place: null });
+        }
+
+        const best = places[0];
+
+        let placeId = (best?.id || "").toString().trim() || null;
+        let name = (best?.displayName?.text || "").toString().trim() || "";
+        let address = (best?.formattedAddress || "").toString().trim() || "";
+        let plat =
+          typeof best?.location?.latitude === "number"
+            ? best.location.latitude
+            : null;
+        let plng =
+          typeof best?.location?.longitude === "number"
+            ? best.location.longitude
+            : null;
+        let googleMapsUri =
+          (best?.googleMapsUri || "").toString().trim() || null;
+
+        // ensure address/uri are present via Place Details (New) when needed
+        if (
+          placeId &&
+          (!address || !googleMapsUri || plat === null || plng === null)
+        ) {
+          try {
+            const details = await fetchGooglePlaceDetails(placeId);
+            address =
+              address ||
+              (details?.formattedAddress || "").toString().trim() ||
+              (details?.shortFormattedAddress || "").toString().trim();
+            googleMapsUri =
+              googleMapsUri ||
+              (details?.googleMapsUri || "").toString().trim() ||
+              null;
+            if (
+              plat === null &&
+              typeof details?.location?.latitude === "number"
+            )
+              plat = details.location.latitude;
+            if (
+              plng === null &&
+              typeof details?.location?.longitude === "number"
+            )
+              plng = details.location.longitude;
+            name =
+              name ||
+              (details?.displayName?.text || "").toString().trim() ||
+              "";
+          } catch (e) {
+            console.error("MAP RESOLVE DETAILS (NOBIAS) ERROR:", e);
+          }
+        }
+
+        return res.json({
+          ok: true,
+          provider: "google_textsearch_nobias",
+          googleError: null,
+          place: {
+            placeId,
+            name,
+            address,
+            lat: plat,
+            lng: plng,
+            googleMapsUri,
+          },
+        });
+      } catch (e) {
+        console.error("MAP RESOLVE TEXTSEARCH(NOBIAS) ERROR:", e);
+        return res.json({
+          ok: true,
+          provider: "google_failed",
+          googleError: String(e?.message || e),
+          place: null,
+        });
+      }
     }
 
     const radius = Math.min(Math.max(Number(req.body?.radius) || 120, 20), 500);
