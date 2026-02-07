@@ -6,17 +6,30 @@ document.addEventListener("DOMContentLoaded", async function () {
   displayTimeline();
 
   // scrollTo from calendar
+  // scrollTo from calendar (focus + flash border)
   const params = new URLSearchParams(location.search);
   const scrollTo = params.get("scrollTo");
   if (scrollTo) {
-    setTimeout(() => {
-      const card = document
-        .querySelector(`[onclick="editEntry(${scrollTo})"]`)
-        ?.closest(".entry-card");
-      if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 300);
+    setTimeout(() => focusEntryCard(scrollTo), 350);
   }
 });
+
+function focusEntryCard(entryId) {
+  const card = document
+    .querySelector(`[onclick="editEntry(${entryId})"]`)
+    ?.closest(".entry-card");
+  if (!card) return;
+
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  card.classList.add("focus-flash");
+  setTimeout(() => card.classList.remove("focus-flash"), 1200);
+
+  // (optional) xóa query để refresh không flash lại
+  const url = new URL(window.location.href);
+  url.searchParams.delete("scrollTo");
+  history.replaceState({}, "", url);
+}
 
 function displayTimeline() {
   const container = document.getElementById("timeline");
