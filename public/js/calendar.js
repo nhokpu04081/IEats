@@ -22,6 +22,19 @@ document.addEventListener("DOMContentLoaded", async function () {
   };
 });
 
+// Scroll helper: after clicking a day with entries, move viewport to the list
+function scrollToDayEntries() {
+  const el = document.getElementById("dayEntries");
+  if (!el) return;
+
+  // Smooth scroll to the entries section
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // Small visual cue
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 900);
+}
+
 function renderCalendar(date) {
   const calendarEl = document.getElementById("calendar");
   const monthYearEl = document.getElementById("currentMonth");
@@ -84,7 +97,10 @@ function renderCalendar(date) {
     `;
 
     dayEl.addEventListener("click", () => {
-      if (hasEntry) showDayEntries(currentDateStr);
+      if (!hasEntry) return;
+      showDayEntries(currentDateStr);
+      // Wait one frame so the entries are rendered, then scroll down
+      requestAnimationFrame(scrollToDayEntries);
     });
 
     calendarEl.appendChild(dayEl);
