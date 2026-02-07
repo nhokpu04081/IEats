@@ -7,6 +7,11 @@ function displayCategories() {
   const container = document.getElementById("categoriesContainer");
   if (!container) return;
 
+  // backward-compatible: older shared.js may not have this field
+  if (typeof appData.currentRatingFilter === "undefined") {
+    appData.currentRatingFilter = null;
+  }
+
   const allTags = [...new Set(appData.entries.flatMap((entry) => entry.tags))];
   const restaurantsByRating = groupRestaurantsByRating();
 
@@ -25,7 +30,32 @@ function displayCategories() {
   html += `
         <div class="category-section">
             <h3>⭐ 評価別カテゴリー</h3>
+            <div class="rating-filters">
+              <button class="rating-filter ${
+                !appData.currentRatingFilter ? "active" : ""
+              }" onclick="filterByRating(0)">すべて</button>
+              ${[5, 4, 3, 2, 1]
+                .map((r) => {
+                  const count = (restaurantsByRating[r] || []).length;
+                  const active = appData.currentRatingFilter === r;
+                  const disabled = count === 0;
+                  return `
+                    <button class="rating-filter ${active ? "active" : ""} ${
+                      disabled ? "disabled" : ""
+                    }" onclick="filterByRating(${r})" ${
+                      disabled ? "disabled" : ""
+                    }>
+                      ${r}★ (${count})
+                    </button>
+                  `;
+                })
+                .join("")}
+            </div>
             ${Object.entries(restaurantsByRating)
+              .filter(([rating]) => {
+                if (!appData.currentRatingFilter) return true;
+                return parseInt(rating) === appData.currentRatingFilter;
+              })
               .map(
                 ([rating, restaurants]) => `
                 <div class="rating-item">
@@ -62,6 +92,18 @@ function displayCategories() {
             `,
               )
               .join("")}
+            ${
+              appData.currentRatingFilter &&
+              (!restaurantsByRating[appData.currentRatingFilter] ||
+                restaurantsByRating[appData.currentRatingFilter].length === 0)
+                ? `
+                  <div class="category-empty">
+                    <div>🔍</div>
+                    <p>${appData.currentRatingFilter}★ に該当する飲食店はありません</p>
+                  </div>
+                `
+                : ""
+            }
         </div>
     `;
 
@@ -187,6 +229,19 @@ function filterByTag(tag) {
   appData.currentTagFilter = appData.currentTagFilter === tag ? null : tag;
   displayCategories();
 }
+
+function filterByRating(rating) {
+  // rating=0 means reset
+  if (!rating) {
+    appData.currentRatingFilter = null;
+  } else {
+    appData.currentRatingFilter =
+      appData.currentRatingFilter === rating ? null : rating;
+  }
+  displayCategories();
+}
+window.filterByRating = filterByRating;
+
 function goToRestaurant(name) {
   window.location.href = `restaurants.html?restaurant=${encodeURIComponent(name)}`;
 }

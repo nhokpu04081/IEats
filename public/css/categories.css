@@ -25,6 +25,39 @@
   flex-wrap: wrap;
 }
 
+.rating-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.rating-filter {
+  padding: 0.45rem 0.9rem;
+  border: 2px solid #e9ecef;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: white;
+  font-size: 0.9rem;
+}
+
+.rating-filter:hover {
+  border-color: #667eea;
+}
+
+.rating-filter.active {
+  background: #667eea;
+  color: white;
+  border-color: #764ba2;
+}
+
+.rating-filter.disabled,
+.rating-filter:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .tag-filter {
   padding: 0.5rem 1rem;
   border: 2px solid #e9ecef;
