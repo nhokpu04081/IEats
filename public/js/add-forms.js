@@ -353,23 +353,26 @@ async function parseMapLink() {
   const link = (linkEl?.value || "").trim();
   if (!link) return;
 
-  // short link is hard to parse without expanding
-  if (link.includes("goo.gl") || link.includes("maps.app.goo.gl")) {
-    alert(
-      "⚠️ このアプリはショートリンクには対応していません\n長いGoogle Mapsリンクを使用するか、手動で店舗名と住所を入力してください",
-    );
-    if (linkEl) {
-      linkEl.value = "";
-      linkEl.focus();
-    }
+  // cần login vì /api/maps/resolve có requireAuth
+  await ensureDataLoaded();
+  if (!appData.user) {
+    alert("ログインしてください。");
     return;
   }
+
+  const nameEl = document.getElementById("restaurantName");
+  const addrEl = document.getElementById("restaurantAddress");
+  if (addrEl) addrEl.placeholder = "住所を取得中...";
+
+  // 1) cố gắng parse nhanh name/lat/lng (nếu là link dài thì có)
+  let placeName = "";
+  let lat = "";
+  let lng = "";
 
   try {
     const url = new URL(link);
 
-    // 1) get place name from /place/
-    let placeName = "";
+    // name từ /place/
     const pathParts = url.pathname.split("/");
     for (let i = 0; i < pathParts.length; i++) {
       if (pathParts[i] === "place" && i + 1 < pathParts.length) {
@@ -380,18 +383,13 @@ async function parseMapLink() {
             /\+/g,
             " ",
           ),
-        );
+        ).trim();
         break;
       }
     }
-    if (placeName) {
-      const nameEl = document.getElementById("restaurantName");
-      if (nameEl) nameEl.value = placeName.trim();
-    }
+    if (placeName && nameEl) nameEl.value = placeName;
 
-    // 2) prefer exact POI coordinates from !3dLAT!4dLNG (may appear multiple times; take last)
-    let lat = "";
-    let lng = "";
+    // coords: prefer !3d..!4d.., fallback @lat,lng
     const allPairs = [
       ...link.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g),
     ];
@@ -400,56 +398,59 @@ async function parseMapLink() {
       lat = m[1];
       lng = m[2];
     } else {
-      // fallback: map center @LAT,LNG
       const centerMatch = link.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
       if (centerMatch) {
         lat = centerMatch[1];
         lng = centerMatch[2];
       }
     }
+  } catch (_) {
+    // link rút gọn có thể không parse được ở frontend -> OK, để server xử lý
+  }
 
-    // 3) get address (prefer Google Places via server for accuracy)
+  // 2) gọi server resolve (server sẽ expand short link + dùng Google Places)
+  try {
+    const payload = { link };
+    if (placeName) payload.name = placeName;
     if (lat && lng) {
-      await ensureDataLoaded();
-      if (!appData.user) {
-        alert("ログインしてください。");
+      payload.lat = Number(lat);
+      payload.lng = Number(lng);
+    }
+
+    const resp = await apiPost("/maps/resolve", payload);
+    const place = resp?.place || null;
+
+    if (place) {
+      if (nameEl && place.name) nameEl.value = place.name;
+      if (addrEl && place.address) {
+        addrEl.value = place.address;
+        addrEl.placeholder = "";
         return;
       }
-
-      const addrEl = document.getElementById("restaurantAddress");
-      if (addrEl) addrEl.placeholder = "住所を取得中...";
-
-      try {
-        const resp = await apiPost("/maps/resolve", {
-          name: placeName || "",
-          lat: Number(lat),
-          lng: Number(lng),
-        });
-
-        const place = resp?.place || null;
-        if (place) {
-          const nameEl = document.getElementById("restaurantName");
-          if (nameEl && place.name) nameEl.value = place.name;
-          if (addrEl && place.address) {
-            addrEl.value = place.address;
-            addrEl.placeholder = "";
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn("Google resolve failed, fallback to OSM:", e);
-      }
-
-      // fallback: free OSM reverse
-      getAddressFromOpenStreetMap(lat, lng);
-    } else {
-      alert(
-        "⚠️ このリンクから座標を取得できません\n手動で店舗名と住所を入力してください",
-      );
     }
-  } catch (error) {
-    console.error("Link parse error:", error);
-    alert("リンクの解析に失敗しました。手動で入力してください");
+
+    // 3) nếu server chưa trả được place mà mình có coords => fallback OSM
+    if (lat && lng) {
+      getAddressFromOpenStreetMap(lat, lng);
+      return;
+    }
+
+    // không có coords luôn -> yêu cầu nhập tay
+    if (addrEl) addrEl.placeholder = "";
+    alert(
+      "⚠️ 情報を取得できませんでした。手動で店舗名と住所を入力してください",
+    );
+  } catch (e) {
+    console.warn("maps/resolve failed:", e);
+
+    // fallback OSM nếu có coords
+    if (lat && lng) {
+      getAddressFromOpenStreetMap(lat, lng);
+      return;
+    }
+
+    if (addrEl) addrEl.placeholder = "";
+    alert("⚠️ リンク解析に失敗しました。手動で入力してください");
   }
 }
 
