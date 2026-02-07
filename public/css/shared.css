@@ -39,6 +39,9 @@ header {
 .logo {
   font-size: 1.8rem;
   font-weight: bold;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 .logo span {
