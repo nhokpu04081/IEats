@@ -230,3 +230,57 @@ async function updateEntry(updatedData) {
   }
 }
 window.updateEntry = updateEntry;
+
+// ===== Image Zoom for Home timeline =====
+function openImageModal(src, alt = "") {
+  const modal = document.getElementById("imageModal");
+  const img = document.getElementById("imageModalImg");
+  if (!modal || !img) return;
+
+  img.src = src;
+  img.alt = alt || "preview";
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeImageModal() {
+  const modal = document.getElementById("imageModal");
+  const img = document.getElementById("imageModalImg");
+  if (!modal || !img) return;
+
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+  img.src = "";
+}
+
+function initHomeImageZoom() {
+  const timeline = document.getElementById("timeline");
+  if (!timeline) return;
+
+  // Delegation: ảnh entry render động vẫn bắt được click
+  timeline.addEventListener("click", (e) => {
+    const img = e.target.closest("img.entry-image");
+    if (!img) return;
+    openImageModal(img.src, img.alt);
+  });
+
+  // Click nền đen để đóng
+  const modal = document.getElementById("imageModal");
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) closeImageModal();
+  });
+
+  // Nút X để đóng
+  document
+    .getElementById("closeImageModal")
+    ?.addEventListener("click", closeImageModal);
+
+  // ESC để đóng
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeImageModal();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initHomeImageZoom();
+});
