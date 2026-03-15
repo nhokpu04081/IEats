@@ -71,7 +71,10 @@ if (!MYSQL_URL) {
     "[WARN] MYSQL_URL is not set. API will fail until DB is configured.",
   );
 }
-const pool = mysql.createPool(MYSQL_URL);
+const pool = mysql.createPool({
+  uri: MYSQL_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 // ---------- Helpers ----------
 function requireAuth(req, res, next) {
