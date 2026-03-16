@@ -580,62 +580,70 @@ async function handleNearbySearch() {
 // === FORM SUBMISSION HANDLERS (ONLY THIS PART CHANGED TO MYSQL/API) ===
 async function handleEntrySubmit(e) {
   e.preventDefault();
-  await ensureDataLoaded();
 
-  if (!appData.user) {
-    alert("ログインしてください。");
-    return;
-  }
-
-  if (selectedRating === 0) {
-    alert("総合評価を選択してください");
-    return;
-  }
-
-  const restaurantNameEl = document.getElementById("restaurantName");
-  const restaurantAddressEl = document.getElementById("restaurantAddress");
-
-  if (!restaurantNameEl || !restaurantNameEl.value.trim()) {
-    alert("店舗名を入力してください");
-    return;
-  }
-  if (!restaurantAddressEl || !restaurantAddressEl.value.trim()) {
-    alert("住所を入力してください");
-    return;
-  }
-
-  const dishes = [];
-  document.querySelectorAll(".dish-input").forEach((input) => {
-    const nameInput = input.querySelector(".dish-name");
-    if (nameInput && nameInput.value.trim())
-      dishes.push(nameInput.value.trim());
-  });
-
-  const tagsInput = document.getElementById("entryTags");
-  const tags =
-    tagsInput && tagsInput.value
-      ? tagsInput.value
-          .split(/[,,、]/)
-          .map((tag) => tag.trim())
-          .filter((tag) => tag)
-      : [];
-
-  const newEntry = {
-    id: Date.now(),
-    restaurantName: restaurantNameEl.value.trim(),
-    restaurantAddress: restaurantAddressEl.value.trim(),
-    date:
-      document.getElementById("entryDate")?.value ||
-      new Date().toISOString().split("T")[0],
-    overallRating: selectedRating,
-    content: document.getElementById("entryContent")?.value || "",
-    dishes: dishes,
-    tags: tags,
-    images: selectedImages,
-    image: selectedImages[0] || null,
-  };
+  // ✅ Chống double submit
+  const submitBtn = document.querySelector('#entryForm button[type="submit"]');
+  if (submitBtn.disabled) return; // đang xử lý rồi thì bỏ qua
+  submitBtn.disabled = true;
+  const originalText = submitBtn.textContent;
+  submitBtn.textContent = "保存中...";
 
   try {
+    await ensureDataLoaded();
+
+    if (!appData.user) {
+      alert("ログインしてください。");
+      return;
+    }
+
+    if (selectedRating === 0) {
+      alert("総合評価を選択してください");
+      return;
+    }
+
+    const restaurantNameEl = document.getElementById("restaurantName");
+    const restaurantAddressEl = document.getElementById("restaurantAddress");
+
+    if (!restaurantNameEl || !restaurantNameEl.value.trim()) {
+      alert("店舗名を入力してください");
+      return;
+    }
+    if (!restaurantAddressEl || !restaurantAddressEl.value.trim()) {
+      alert("住所を入力してください");
+      return;
+    }
+
+    const dishes = [];
+    document.querySelectorAll(".dish-input").forEach((input) => {
+      const nameInput = input.querySelector(".dish-name");
+      if (nameInput && nameInput.value.trim())
+        dishes.push(nameInput.value.trim());
+    });
+
+    const tagsInput = document.getElementById("entryTags");
+    const tags =
+      tagsInput && tagsInput.value
+        ? tagsInput.value
+            .split(/[,,、]/)
+            .map((tag) => tag.trim())
+            .filter((tag) => tag)
+        : [];
+
+    const newEntry = {
+      id: Date.now(),
+      restaurantName: restaurantNameEl.value.trim(),
+      restaurantAddress: restaurantAddressEl.value.trim(),
+      date:
+        document.getElementById("entryDate")?.value ||
+        new Date().toISOString().split("T")[0],
+      overallRating: selectedRating,
+      content: document.getElementById("entryContent")?.value || "",
+      dishes: dishes,
+      tags: tags,
+      images: selectedImages,
+      image: selectedImages[0] || null,
+    };
+
     if (
       typeof isEditing !== "undefined" &&
       isEditing &&
@@ -644,47 +652,60 @@ async function handleEntrySubmit(e) {
     ) {
       newEntry.id = currentEditId;
       if (typeof updateEntry === "function") {
-        await updateEntry(newEntry); // home.js handles apiPut+refresh+timeline
+        await updateEntry(newEntry);
       }
     } else {
       await apiPost("/entries", newEntry);
       await refreshData();
       alert("日記を保存しました！🎉");
     }
+
+    hideAddForm();
+    refreshCurrentPage();
   } catch (err) {
     console.error(err);
     alert("保存に失敗しました（サーバー/DBを確認）");
+  } finally {
+    // ✅ Luôn restore lại nút dù thành công hay lỗi
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
   }
-
-  hideAddForm();
-  refreshCurrentPage();
 }
 
 async function handleWishlistSubmit(e) {
   e.preventDefault();
-  await ensureDataLoaded();
 
-  if (!appData.user) {
-    alert("ログインしてください。");
-    return;
-  }
-
-  const wishlistDish = document.getElementById("wishlistDish");
-  if (!wishlistDish || !wishlistDish.value.trim()) {
-    alert("料理名は必須です");
-    return;
-  }
-
-  const newWishlistItem = {
-    id: Date.now(),
-    dish: wishlistDish.value.trim(),
-    restaurant: document.getElementById("wishlistRestaurant")?.value || "",
-    notes: document.getElementById("wishlistNotes")?.value || "",
-    priority: document.getElementById("wishlistPriority")?.value || "medium",
-    addedDate: new Date().toISOString().split("T")[0],
-  };
+  const submitBtn = document.querySelector(
+    '#wishlistForm button[type="submit"]',
+  );
+  if (submitBtn.disabled) return;
+  submitBtn.disabled = true;
+  const originalText = submitBtn.textContent;
+  submitBtn.textContent = "追加中...";
 
   try {
+    await ensureDataLoaded();
+
+    if (!appData.user) {
+      alert("ログインしてください。");
+      return;
+    }
+
+    const wishlistDish = document.getElementById("wishlistDish");
+    if (!wishlistDish || !wishlistDish.value.trim()) {
+      alert("料理名は必須です");
+      return;
+    }
+
+    const newWishlistItem = {
+      id: Date.now(),
+      dish: wishlistDish.value.trim(),
+      restaurant: document.getElementById("wishlistRestaurant")?.value || "",
+      notes: document.getElementById("wishlistNotes")?.value || "",
+      priority: document.getElementById("wishlistPriority")?.value || "medium",
+      addedDate: new Date().toISOString().split("T")[0],
+    };
+
     await apiPost("/wishlist", newWishlistItem);
     await refreshData();
 
@@ -694,6 +715,10 @@ async function handleWishlistSubmit(e) {
   } catch (err) {
     console.error(err);
     alert("Wishlist追加に失敗しました");
+  } finally {
+    // ✅ Luôn restore dù thành công, lỗi, hay return sớm
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
   }
 }
 
